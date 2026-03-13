@@ -3,12 +3,18 @@ import { TanStackRouterDevtools } from '@tanstack/router-devtools'
 import { router } from './router'
 import { queryClient } from './lib/query-provider'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
-      <TanStackRouterDevtools router={router} />
+      {import.meta.env.DEV && (
+        <>
+          <TanStackRouterDevtools router={router} />
+          <ReactQueryDevtools initialIsOpen={false} />
+        </>
+      )}
     </QueryClientProvider>
   )
 }
