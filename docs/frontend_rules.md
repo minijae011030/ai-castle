@@ -77,7 +77,7 @@ interface UserData { ... }
 ### 5.1. Base Component
 
 - 프로젝트의 모든 기본 UI 구성 요소는 shadcn/ui를 기반으로 합니다.
-- 새로운 컴포넌트가 필요할 경우 npx shadcn-ui@latest add [component] 명령어로 추가한 뒤 프로젝트 스타일에 맞게 커스텀합니다.
+- 새로운 컴포넌트가 필요할 경우 pnpm dlx shadcn@latest add [component] 명령어로 추가한 뒤 프로젝트 스타일에 맞게 커스텀합니다.
 
 ### 5.2. Customization
 
@@ -101,7 +101,7 @@ interface UserData { ... }
 
 ```ts
 // Good: src/routes/(auth)/ai.tsx
-import { AiDashboardPage } from "@/pages/ai/ai_dashboard_page"; // 파일명 규칙 준수
+import { AiDashboardPage } from "@/pages/ai/ai-dashboard-page"; // 파일명 규칙 준수
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod"; // 검증을 위해 zod 사용 권장
 
@@ -127,8 +127,8 @@ export const Route = createFileRoute("/(auth)/ai")({
 ### 7.2. Directory & File Naming
 
 - Folder: src/services 폴더 내에 도메인별로 파일을 나누어 관리합니다.
-- File Naming: 소문자와 snake_case를 사용합니다.
-- Examples: auth_service.ts, todo_service.ts, agent_service.ts
+- File Naming: 소문자와 kebab-case(-)를 사용합니다.
+- Examples: auth-service.ts, todo-service.ts, agent-service.ts
 
 ### 7.3. API Function Pattern
 
@@ -171,7 +171,7 @@ export async function createPost(
 ### 8.1. Directory Structure
 
 - Folder: src/hooks/queries 폴더 내에 도메인별로 파일을 관리합니다.
-- File Naming: 소문자와 snake_case를 사용하며, 뒤에 \_query.ts를 붙입니다.
+- File Naming: 소문자와 kebab-case(-)를 사용하며, 뒤에 -query.ts를 붙입니다.
 - Examples: user_query.ts, todo_query.ts, agent_query.ts
 
 ### 8.2. Query Key Factory
@@ -190,7 +190,7 @@ export async function createPost(
 - useMutation 성공 시(onSuccess), 관련된 쿼리 키를 invalidateQueries 하여 데이터 일관성을 유지합니다.
 
 ```ts
-// Example: src/hooks/queries/user_query.ts
+// Example: src/hooks/queries/user-query.ts
 
 // 1. Query Key Factory
 export const user_query_keys = {
@@ -240,7 +240,7 @@ export const useEditUserInfo = (
 
 ## 9. Project Folder Structure (Frontend)
 
-Cursor는 모든 코드를 생성할 때 아래의 엄격한 디렉토리 구조를 준수해야 합니다. 모든 파일명은 snake_case를 원칙으로 합니다. (단, 훅은 useCamelCase)
+Cursor는 모든 코드를 생성할 때 아래의 엄격한 디렉토리 구조를 준수해야 합니다. 모든 파일명은 kebab-case(-)를 원칙으로 합니다. (단, 훅은 useCamelCase)
 
 ```text
 src/
@@ -254,21 +254,21 @@ src/
 │   └── (auth)/         # 그룹화된 라우트 폴더 (예: 인증 필요 섹션)
 ├── pages/              # 실제 화면 UI 컴포넌트 (Route 파일과 1:1 매칭)
 │   ├── login/          # 도메인별 폴더 구성
-│   │   └── login_page.tsx
+│   │   └── login-page.tsx
 │   └── ai/
-│       └── ai_dashboard_page.tsx
+│       └── ai-dashboard-page.tsx
 ├── components/         # 재사용 가능한 UI 컴포넌트
 │   ├── ui/             # shadcn/ui 컴포넌트들
 │   ├── common/         # 공통 컴포넌트 (Button, Input 등)
 │   └── dashboard/      # 특정 도메인 전용 컴포넌트
 ├── services/           # 도메인별 API 호출 함수 (src/lib/client.ts 사용)
-│   ├── auth_service.ts
-│   └── todo_service.ts
+│   ├── auth-service.ts
+│   └── todo-service.ts
 └── hooks/              # 커스텀 훅 폴더
     ├── queries/        # TanStack Query (Query Key Factory 포함)
-    │   ├── user_query.ts
-    │   └── todo_query.ts
-    └── use_member.ts   # 일반 비즈니스 로직 훅
+    │   ├── user-query.ts
+    │   └── todo-query.ts
+    └── useMember.ts   # 일반 비즈니스 로직 훅
 ```
 
 ### 9.1. 구조적 핵심 원칙
