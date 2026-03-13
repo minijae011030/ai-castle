@@ -66,10 +66,10 @@ design(front): update dashboard UI to VIP dark mode
 ```plaintext
 feat(front|back): integrate schedule negotiation API
 
-- (back) Added POST endpoint to handle user negotiation request.
-- (back) Implemented DB status update logic (NEGOTIATING -> ACCEPTED).
-- (front) Added "Negotiate" button and modal on Todo list UI.
-- (front) Connected fetch API and handled loading state.
+- (back) added POST endpoint to handle user negotiation request.
+- (back) implemented DB status update logic (NEGOTIATING -> ACCEPTED).
+- (front) added "Negotiate" button and modal on Todo list UI.
+- (front) connected fetch API and handled loading state.
 ```
 
 ### 4.4 루트 스코프 (문서 업데이트)
