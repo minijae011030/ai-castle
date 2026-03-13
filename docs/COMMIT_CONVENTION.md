@@ -42,7 +42,7 @@ This document defines the git commit message convention for the AI Castle Monore
 
 ## 4. Examples (작성 예시)
 
-### ✅ 단일 스코프 (백엔드 기능 추가)
+### 4.1 단일 스코프 (백엔드 기능 추가)
 
 ```plaintext
 feat(back): add dynamic scheduling batch process for proactive agent
@@ -52,7 +52,7 @@ feat(back): add dynamic scheduling batch process for proactive agent
 - Trigger Main Agent API based on biorhythm settings.
 ```
 
-### ✅ 단일 스코프 (프론트엔드 디자인 수정)
+### 4.2 단일 스코프 (프론트엔드 디자인 수정)
 
 ```plaintext
 design(front): update dashboard UI to VIP dark mode
@@ -61,7 +61,7 @@ design(front): update dashboard UI to VIP dark mode
 - Adjusted spacing and typography for better readability.
 ```
 
-### ✅ 다중 스코프 (프론트/백엔드 API 연동)
+### 4.3 다중 스코프 (프론트/백엔드 API 연동)
 
 ```plaintext
 feat(front|back): integrate schedule negotiation API
@@ -72,7 +72,7 @@ feat(front|back): integrate schedule negotiation API
 - (front) Connected fetch API and handled loading state.
 ```
 
-### ✅ 루트 스코프 (문서 업데이트)
+### 4.4 루트 스코프 (문서 업데이트)
 
 ```plaintext
 docs(root): update project core architecture in README
