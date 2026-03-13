@@ -10,10 +10,10 @@
 
 ### 1.2. Files & Directories
 
-- Pages & Components: 소문자와 snake_case를 조합하여 작성합니다.
-- Examples: login_page.tsx, main_dashboard.tsx, submit_box.tsx, input.tsx
-- Hooks: 앞에 use를 붙이고 camelCase를 사용합니다.
-- Examples: useMember.ts, useAuth.ts, useTodoStream.ts
+- Pages & Components: 소문자와 하이픈(-)을 조합하는 kebab-case 사용
+  - Examples: login-page.tsx, main-dashboard.tsx, submit-box.tsx, input.tsx
+- Hooks: 앞에 use를 붙이고 camelCase 사용 (기존 유지)
+  - Examples: useMember.ts, useAuth.ts, useTodoStream.ts
 
 ## 2. Component Standards
 
