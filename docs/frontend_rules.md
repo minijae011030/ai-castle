@@ -52,6 +52,34 @@ interface UserData { ... }
 
 ```
 
+### 3.2. API Request/Response 및 Interface 타입 위치
+
+- **API 요청(Request body, params)·응답(Response)** 및 해당 도메인에서 쓰는 **interface**는 `src/types` 폴더에 **도메인별**로 정의합니다.
+- **파일명**: `[도메인].type.ts` (kebab-case). 예: `health.type.ts`, `auth.type.ts`, `todo.type.ts`.
+- 서비스(`src/services`), 훅(`src/hooks/queries`)에서는 해당 도메인 타입 파일만 import하여 사용합니다. 타입을 서비스/페이지 파일 안에 두지 않습니다.
+
+```ts
+// Good: src/types/health.type.ts
+export interface HealthPayloadInterface {
+  status: string;
+}
+export interface HealthResponseInterface {
+  status: number;
+  message: string;
+  data: HealthPayloadInterface | null;
+}
+
+// Good: src/types/todo.type.ts (도메인별 분리)
+export interface TodoItemInterface { ... }
+export interface GetTodoListResponseInterface { ... }
+export interface CreateTodoBodyInterface { ... }
+```
+
+```ts
+// Bad: 서비스 파일 내부에 interface 정의
+// src/services/health-service.ts 안에 HealthResponseInterface 정의 금지
+```
+
 ## 4. Styling Rules (Tailwind CSS)
 
 ### 4.1. Color Management
@@ -133,19 +161,14 @@ export const Route = createFileRoute("/(auth)/ai")({
 ### 7.3. API Function Pattern
 
 - 각 API 호출은 독립적인 async 함수로 작성하며, 아래의 단계를 반드시 준수합니다.
-- Interface 정의: 요청(Request)과 응답(Response) 객체는 반드시 Interface로 정의하며, 규칙 3.1에 따라 Interface 접미사를 붙입니다.
+- **타입 위치**: 요청/응답 Interface는 서비스 파일이 아닌 `src/types/[도메인].type.ts`에 정의합니다 (규칙 3.2).
 - Status 체크: 응답의 res.status가 200이 아닐 경우 에러를 던집니다.
 - Data 반환: 최종적으로 res.data를 반환하여 컴포넌트에서 비즈니스 로직에만 집중하게 합니다.
 
 ```ts
-// Example: src/services/post_service.ts
-
-// 1. Interface 정의 (규칙 준수)
-interface CreatePostResponseInterface {
-  status: number;
-  message: string;
-  data: CreatePostDataInterface;
-}
+// Example: src/services/post-service.ts
+// 1. 타입은 src/types/post.type.ts 에 정의 (CreatePostResponseInterface, CreatePostBodyInterface 등)
+import type { CreatePostResponseInterface, CreatePostBodyInterface, CreatePostDataInterface } from "@/types/post.type";
 
 // 2. 함수 작성 (camelCase 사용)
 export async function createPost(
@@ -249,6 +272,10 @@ src/
 ├── lib/                # 외부 라이브러리 설정 및 공통 유틸리티
 │   ├── client.ts       # API 클래스 및 Axios 인스턴스 (절대 규칙)
 │   └── utils.ts        # cn() 유틸리티 등 공통 함수
+├── types/              # API 요청/응답 및 도메인별 타입 (interface, 규칙 3.2)
+│   ├── health.type.ts
+│   ├── auth.type.ts
+│   └── todo.type.ts
 ├── routes/             # TanStack Router 라우트 정의 (로직만 존재)
 │   ├── __root.tsx      # 최상위 루트 라우트
 │   └── (auth)/         # 그룹화된 라우트 폴더 (예: 인증 필요 섹션)
