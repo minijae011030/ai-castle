@@ -8,4 +8,4 @@ cd ..
 
 echo "☕ [Backend] 코드 스타일 검사 시작..."
 cd backend
-./gradlew spotlessCheck
+./gradlew spotlessApply

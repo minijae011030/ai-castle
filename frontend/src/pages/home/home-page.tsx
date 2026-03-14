@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getHealth } from '@/services/health-service'
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
 const HomePage = () => {
@@ -31,6 +32,9 @@ const HomePage = () => {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
       <h1 className="text-2xl font-semibold text-foreground">AI Castle</h1>
+      <Link to="/login" className="text-sm text-primary hover:underline">
+        로그인
+      </Link>
       <Button
         onClick={handleHealthCheck}
         disabled={is_loading}

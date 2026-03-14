@@ -14,12 +14,22 @@ const baseURL = import.meta.env.VITE_PUBLIC_API as string | undefined
 
 if (!baseURL) throw new Error('VITE_PUBLIC_API is missing')
 
+const ACCESS_TOKEN_KEY = 'accessToken'
+
 const instance = axios.create({
   baseURL: baseURL,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
+})
+
+instance.interceptors.request.use((config) => {
+  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
 })
 
 instance.interceptors.response.use(
