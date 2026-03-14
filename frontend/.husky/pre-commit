@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+
+echo "🎨 [Frontend] 코드 포매팅 및 검사 시작..."
+cd frontend
+pnpm exec lint-staged
+
+cd ..
+
+echo "☕ [Backend] 코드 스타일 검사 시작..."
+cd backend
+./gradlew spotlessCheck
