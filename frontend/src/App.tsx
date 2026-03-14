@@ -1,5 +1,5 @@
 import { RouterProvider } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/router-devtools'
+import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { router } from './router'
 import { queryClient } from './lib/query-provider'
 import { QueryClientProvider } from '@tanstack/react-query'
