@@ -15,3 +15,24 @@ export interface AuthLoginResponseInterface {
   message: string
   data: LoginResponseDataInterface | null
 }
+
+/** 회원가입 요청 body */
+export interface SignUpRequestInterface {
+  email: string
+  password: string
+  user_name: string
+}
+
+/** 회원가입 성공 시 응답 data */
+export interface SignUpResponseDataInterface {
+  user_id: number
+  email: string
+  user_name: string
+}
+
+/** ResultResponse<SignUpResponseData> 형태 */
+export interface AuthSignUpResponseInterface {
+  status: number
+  message: string
+  data: SignUpResponseDataInterface | null
+}

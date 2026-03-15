@@ -1,13 +1,13 @@
-import { HomePage } from '@/pages/home/home-page'
+import { SignUpPage } from '@/pages/signup/signup-page'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useUserStore } from '@/stores/user.store'
 
-export const Route = createFileRoute('/')({
+export const Route = createFileRoute('/signup')({
   beforeLoad: () => {
     const token = useUserStore.getState().accessToken
-    if (!token) {
-      throw redirect({ to: '/login' })
+    if (token) {
+      throw redirect({ to: '/' })
     }
   },
-  component: HomePage,
+  component: SignUpPage,
 })

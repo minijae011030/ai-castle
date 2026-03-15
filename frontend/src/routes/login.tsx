@@ -1,6 +1,13 @@
 import { LoginPage } from '@/pages/login/login-page'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { useUserStore } from '@/stores/user.store'
 
 export const Route = createFileRoute('/login')({
+  beforeLoad: () => {
+    const token = useUserStore.getState().accessToken
+    if (token) {
+      throw redirect({ to: '/' })
+    }
+  },
   component: LoginPage,
 })

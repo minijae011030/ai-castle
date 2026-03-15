@@ -1,16 +1,24 @@
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { clearAuth } from '@/services/auth-service'
 import { getHealth } from '@/services/health-service'
-import { Link } from '@tanstack/react-router'
+import { useUserStore } from '@/stores/user.store'
+import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
-const HomePage = () => {
+function HomePage() {
+  const navigate = useNavigate()
   const [health_result, setHealthResult] = useState<{
     status: string
     message: string
   } | null>(null)
   const [health_error, setHealthError] = useState<string | null>(null)
   const [is_loading, setIsLoading] = useState(false)
+
+  const handleLogout = () => {
+    clearAuth()
+    navigate({ to: '/login' })
+  }
 
   const handleHealthCheck = async () => {
     setHealthError(null)
@@ -29,12 +37,21 @@ const HomePage = () => {
     }
   }
 
+  const user_info = useUserStore((s) => s.userInfo)
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
-      <h1 className="text-2xl font-semibold text-foreground">AI Castle</h1>
-      <Link to="/login" className="text-sm text-primary hover:underline">
-        로그인
-      </Link>
+      <div className="flex items-center gap-4">
+        <h1 className="text-2xl font-semibold text-foreground">AI Castle</h1>
+        <Button variant="outline" size="sm" onClick={handleLogout}>
+          로그아웃
+        </Button>
+      </div>
+      {user_info && (
+        <p className="text-sm text-muted-foreground">
+          {user_info.user_name} ({user_info.email})
+        </p>
+      )}
       <Button
         onClick={handleHealthCheck}
         disabled={is_loading}
