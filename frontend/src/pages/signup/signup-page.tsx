@@ -1,30 +1,23 @@
+import { useSignUp } from '@/hooks/queries/auth-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { signUp } from '@/services/auth-service'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
-function SignUpPage() {
+const SignUpPage = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [user_name, setUserName] = useState('')
-  const [signup_error, setSignupError] = useState<string | null>(null)
-  const [is_loading, setIsLoading] = useState(false)
+  const { mutateAsync: signUp, isPending, reset } = useSignUp()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setSignupError(null)
-    setIsLoading(true)
-    try {
-      await signUp({ email, password, user_name })
-      navigate({ to: '/login' })
-    } catch (e) {
-      setSignupError(e instanceof Error ? e.message : '회원가입에 실패했습니다.')
-    } finally {
-      setIsLoading(false)
-    }
+
+    reset()
+    await signUp({ email, password, user_name })
+    navigate({ to: '/login' })
   }
 
   return (
@@ -72,13 +65,8 @@ function SignUpPage() {
               className="h-10"
             />
           </div>
-          {signup_error && (
-            <p className="text-sm text-destructive" role="alert">
-              {signup_error}
-            </p>
-          )}
-          <Button type="submit" disabled={is_loading} className="mt-2 h-10">
-            {is_loading ? '가입 중...' : '회원가입'}
+          <Button type="submit" disabled={isPending} className="mt-2 h-10">
+            {isPending ? '가입 중...' : '회원가입'}
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-muted-foreground">

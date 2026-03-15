@@ -1,29 +1,24 @@
+import { useLogin } from '@/hooks/queries/auth-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { login } from '@/services/auth-service'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { EyeIcon, EyeOffIcon } from 'lucide-react'
 import { useState } from 'react'
 
-function LoginPage() {
+const LoginPage = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [login_error, setLoginError] = useState<string | null>(null)
-  const [is_loading, setIsLoading] = useState(false)
+  const [show_password, setShowPassword] = useState(false)
+  const { mutateAsync: login, isPending, reset } = useLogin()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoginError(null)
-    setIsLoading(true)
-    try {
-      await login({ email, password })
-      navigate({ to: '/' })
-    } catch (e) {
-      setLoginError(e instanceof Error ? e.message : '로그인에 실패했습니다.')
-    } finally {
-      setIsLoading(false)
-    }
+
+    reset()
+    await login({ email, password })
+    navigate({ to: '/' })
   }
 
   return (
@@ -48,24 +43,32 @@ function LoginPage() {
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="login-password">비밀번호</Label>
-            <Input
-              id="login-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              autoComplete="current-password"
-              className="h-10"
-            />
+            <div className="relative">
+              <Input
+                id="login-password"
+                type={show_password ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                autoComplete="current-password"
+                className="h-10 pr-10"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-0 h-10 w-10 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={show_password ? '비밀번호 숨기기' : '비밀번호 보기'}
+              >
+                {show_password ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+              </Button>
+            </div>
           </div>
-          {login_error && (
-            <p className="text-sm text-destructive" role="alert">
-              {login_error}
-            </p>
-          )}
-          <Button type="submit" disabled={is_loading} className="mt-2 h-10">
-            {is_loading ? '로그인 중...' : '로그인'}
+
+          <Button type="submit" disabled={isPending} className="mt-2 h-10">
+            {isPending ? '로그인 중...' : '로그인'}
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-muted-foreground">
