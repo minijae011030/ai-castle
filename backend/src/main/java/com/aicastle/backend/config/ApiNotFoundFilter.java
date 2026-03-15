@@ -11,8 +11,7 @@ import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 /**
- * Security보다 먼저 실행되어, /api/** 중 매핑 없는 경로는 404(ResultResponse)로 응답. Security가
- * 401을 먼저 보내는 것을 막기 위함.
+ * Security보다 먼저 실행되어, /api/** 중 매핑 없는 경로는 404(ResultResponse)로 응답. Security가 401을 먼저 보내는 것을 막기 위함.
  */
 public class ApiNotFoundFilter extends OncePerRequestFilter {
 
@@ -28,9 +27,7 @@ public class ApiNotFoundFilter extends OncePerRequestFilter {
 
   @Override
   protected void doFilterInternal(
-      HttpServletRequest request,
-      HttpServletResponse response,
-      FilterChain filterChain)
+      HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
     if (!request.getRequestURI().startsWith(API_PREFIX)) {
       filterChain.doFilter(request, response);
@@ -38,14 +35,11 @@ public class ApiNotFoundFilter extends OncePerRequestFilter {
     }
 
     try {
-      HandlerExecutionChain chain =
-          requestMappingHandlerMapping.getHandler(request);
+      HandlerExecutionChain chain = requestMappingHandlerMapping.getHandler(request);
       if (chain == null || chain.getHandler() == null) {
         response.setStatus(HttpServletResponse.SC_NOT_FOUND);
         response.setContentType("application/json;charset=UTF-8");
-        response
-            .getOutputStream()
-            .write(NOT_FOUND_JSON.getBytes(StandardCharsets.UTF_8));
+        response.getOutputStream().write(NOT_FOUND_JSON.getBytes(StandardCharsets.UTF_8));
         return;
       }
     } catch (Exception ignored) {

@@ -16,39 +16,23 @@ import org.springframework.web.cors.CorsConfigurationSource;
 public class SecurityConfig {
 
   private static final String[] PERMIT_ALL_PATHS = {
-    "/api/auth/signup",
-    "/api/auth/login",
-    "/api/health",
-    "/error"
+    "/api/auth/signup", "/api/auth/login", "/api/health", "/error"
   };
 
   @Bean
   public SecurityFilterChain securityFilterChain(
-      HttpSecurity http,
-      JwtService jwtService,
-      CorsConfigurationSource corsConfigurationSource)
+      HttpSecurity http, JwtService jwtService, CorsConfigurationSource corsConfigurationSource)
       throws Exception {
-    return http
-        .cors(cors -> cors.configurationSource(corsConfigurationSource))
+    return http.cors(cors -> cors.configurationSource(corsConfigurationSource))
         .csrf(csrf -> csrf.disable())
         .sessionManagement(
-            session ->
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
-            auth ->
-                auth
-                    .requestMatchers(
-                        PERMIT_ALL_PATHS)
-                    .permitAll()
-                    .anyRequest()
-                    .authenticated())
+            auth -> auth.requestMatchers(PERMIT_ALL_PATHS).permitAll().anyRequest().authenticated())
         .exceptionHandling(
-            ex ->
-                ex.authenticationEntryPoint(
-                    new JsonAuthenticationEntryPoint("인증이 필요합니다.")))
+            ex -> ex.authenticationEntryPoint(new JsonAuthenticationEntryPoint("인증이 필요합니다.")))
         .addFilterBefore(
-            new JwtAuthenticationFilter(jwtService),
-            UsernamePasswordAuthenticationFilter.class)
+            new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class)
         .build();
   }
 }

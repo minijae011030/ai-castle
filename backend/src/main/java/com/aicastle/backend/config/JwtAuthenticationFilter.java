@@ -12,8 +12,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * JWT Bearer 토큰 검증 후 SecurityContext에 인증 정보 설정. 실패 시 인증 없이 통과시켜
- * Security가 AuthenticationEntryPoint로 401 처리.
+ * JWT Bearer 토큰 검증 후 SecurityContext에 인증 정보 설정. 실패 시 인증 없이 통과시켜 Security가 AuthenticationEntryPoint로
+ * 401 처리.
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -28,9 +28,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
   @Override
   protected void doFilterInternal(
-      HttpServletRequest request,
-      HttpServletResponse response,
-      FilterChain filterChain)
+      HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
     String authHeader = request.getHeader(AUTHORIZATION_HEADER);
     if (authHeader == null || !authHeader.startsWith(BEARER_PREFIX)) {
@@ -51,8 +49,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       }
       Long userId = jwtService.getUserIdFromToken(token);
       UsernamePasswordAuthenticationToken authentication =
-          new UsernamePasswordAuthenticationToken(
-              userId, null, Collections.emptyList());
+          new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
       SecurityContextHolder.getContext().setAuthentication(authentication);
     } catch (Exception ignored) {
       // 인증 실패 시 SecurityContext 비움, 이후 Security가 401 처리

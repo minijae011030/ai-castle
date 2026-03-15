@@ -30,8 +30,7 @@ public class JsonAuthenticationEntryPoint implements AuthenticationEntryPoint {
             .replace("\"", "\\\"")
             .replace("\n", "\\n")
             .replace("\r", "\\r");
-    String json =
-        "{\"status\":401,\"message\":\"" + escaped + "\",\"data\":null}";
+    String json = "{\"status\":401,\"message\":\"" + escaped + "\",\"data\":null}";
     response.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
   }
 }
