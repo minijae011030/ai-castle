@@ -1,7 +1,5 @@
-import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -21,8 +19,7 @@ import {
 import type { CalendarEventInterface } from '@/types/calendar.type'
 import { endOfDay, format, isWithinInterval, parseISO, startOfDay } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
-import React, { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +30,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { CalendarDayCell } from '@/components/calendar/calendar-day-cell'
+import { CalendarEventListSection } from '@/components/calendar/calendar-event-list-section'
 
 /** datetime-local 값 → API용 ISO 형식 (초 포함) */
 function toApiDatetime(value: string): string {
@@ -59,77 +58,12 @@ function isEventOnDate(event: CalendarEventInterface, date: Date): boolean {
   )
 }
 
-/** 제목 잘라서 표시 (최대 max_len, 초과 시 "..") */
-function truncateTitle(title: string, max_len: number): string {
-  const t = title.trim()
-  if (t.length <= max_len) return t
-  return t.slice(0, max_len - 1) + '..'
-}
-
-const MAX_EVENTS_IN_CELL = 2
-const TITLE_MAX_LEN = 8
-
 const default_form = {
   title: '',
   startAt: '',
   endAt: '',
   memo: '',
 }
-
-/** 셀 안: 왼쪽 위 날짜 + [ 제목 ] 최대 2개 + +N */
-const CalendarDayCell = React.forwardRef<
-  HTMLButtonElement,
-  {
-    day: { date: Date }
-    modifiers: Record<string, boolean>
-    events: CalendarEventInterface[]
-    locale?: { code?: string }
-  } & React.ButtonHTMLAttributes<HTMLButtonElement>
->(function CalendarDayCell({ day, modifiers, events, locale, className, ...button_props }, ref) {
-  const day_events = useMemo(
-    () => events.filter((e) => isEventOnDate(e, day.date)),
-    [events, day.date],
-  )
-  const show_events = day_events.slice(0, MAX_EVENTS_IN_CELL)
-  const rest_count = day_events.length - MAX_EVENTS_IN_CELL
-
-  return (
-    <button
-      ref={ref}
-      type="button"
-      data-day={day.date.toLocaleDateString(locale?.code)}
-      data-selected-single={
-        modifiers.selected &&
-        !modifiers.range_start &&
-        !modifiers.range_end &&
-        !modifiers.range_middle
-      }
-      className={cn(
-        'relative isolate z-10 flex h-full min-h-[5rem] w-full flex-col items-start justify-start gap-0.5 border-0 p-1.5 text-left text-xs font-normal leading-tight outline-none ring-0 transition-[box-shadow] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[selected-single=true]:hover:bg-primary/90 data-[selected-single=true]:hover:text-primary-foreground [.group/day[data-today]_&]:bg-muted [.group/day[data-today]_&]:text-foreground',
-        className,
-      )}
-      {...button_props}
-    >
-      <span className="shrink-0 font-medium text-inherit">{format(day.date, 'd')}</span>
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-0.5 overflow-hidden">
-        {show_events.map((e) => (
-          <span
-            key={e.id}
-            className="block w-full truncate rounded bg-primary/20 px-1 py-0.5 text-[0.65rem] data-[selected-single=true]:bg-primary-foreground/20"
-            title={e.title}
-          >
-            [ {truncateTitle(e.title, TITLE_MAX_LEN)} ]
-          </span>
-        ))}
-        {rest_count > 0 && (
-          <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[0.65rem] font-medium text-white">
-            +{rest_count}
-          </span>
-        )}
-      </div>
-    </button>
-  )
-})
 
 const CalendarPage = () => {
   const { data: events = [], isPending } = useCalendarEventList()
@@ -238,59 +172,15 @@ const CalendarPage = () => {
       </div>
 
       {/* 오른쪽: 선택한 날짜의 일정 카드 목록 */}
-      <div className="min-w-0 flex-1 rounded-lg border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="font-semibold">
-            {format(selected_date, 'yyyy년 M월 d일 (EEE)', { locale: ko })}
-          </h2>
-          <Button size="sm" onClick={open_create}>
-            <PlusIcon className="size-4" />
-            추가
-          </Button>
-        </div>
-
-        {isPending ? (
-          <p className="text-muted-foreground text-sm">불러오는 중...</p>
-        ) : events_on_selected.length === 0 ? (
-          <p className="text-muted-foreground py-6 text-center text-sm">
-            이 날짜의 일정이 없습니다.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {events_on_selected.map((event) => (
-              <Card key={event.id} size="sm">
-                <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-                  <span className="font-medium">{event.title}</span>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => open_edit(event)}
-                      aria-label="수정"
-                    >
-                      <PencilIcon className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => set_delete_target_id(event.id)}
-                      aria-label="삭제"
-                    >
-                      <Trash2Icon className="size-4" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-1 text-sm text-muted-foreground">
-                  <p>
-                    {toDatetimeLocal(event.startAt)} ~ {toDatetimeLocal(event.endAt)}
-                  </p>
-                  {event.memo && <p className="line-clamp-2">{event.memo}</p>}
-                </CardContent>
-              </Card>
-            ))}
-          </ul>
-        )}
-      </div>
+      <CalendarEventListSection
+        selected_date={selected_date}
+        events_on_selected={events_on_selected}
+        is_pending={isPending}
+        on_click_create={open_create}
+        on_click_edit={open_edit}
+        on_click_delete={(id) => set_delete_target_id(id)}
+        to_datetime_local={toDatetimeLocal}
+      />
 
       {/* 추가/수정 다이얼로그 */}
       <Dialog open={dialog_open} onOpenChange={(open) => !open && close_dialog()}>
