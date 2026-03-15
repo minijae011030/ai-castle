@@ -9,3 +9,7 @@ cd ..
 echo "☕ [Backend] 코드 스타일 검사 시작..."
 cd backend
 ./gradlew spotlessApply
+
+cd ..
+# 포맷된 파일을 스테이징에 넣어 같은 커밋에 포함
+git add frontend backend
