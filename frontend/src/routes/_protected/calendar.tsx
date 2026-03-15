@@ -1,6 +1,6 @@
-import { CalendarPlaceholderPage } from '@/pages/calendar/calendar-placeholder-page'
+import { CalendarPage } from '@/pages/calendar/calendar-page'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_protected/calendar')({
-  component: CalendarPlaceholderPage,
+  component: CalendarPage,
 })
