@@ -6,11 +6,15 @@
 - [v] ~~홈 페이지 + 백엔드 헬스 체크 버튼~~
 - [v] ~~health-service, types/health.type.ts~~
 - [v] ~~frontend_rules.md 타입 규칙 추가 (3.2, types 도메인별)~~
+- [v] ~~로그인 (JWT 발급, 로그인 페이지, 보호 라우트)~~
 
 ## 해야할것
 
-- [ ] 로그인 (JWT 발급, 로그인 페이지, 보호 라우트)
 - [ ] 캘린더 이벤트 API 연동 (목록/추가 화면)
+- [ ] 사용자 일과 시간 설정 화면 (day_start_time, day_end_time)
+- [ ] Todo 목록/상세 화면 (AI 생성 일정 확인·협상 버튼)
+- [ ] 리포트/피드백 화면 (End Batch 요약)
+- [ ] 401 전역 처리 (axios 인터셉터에서 토큰 만료 시 clearAuth + /login 리다이렉트)
 
 ---
 
@@ -28,3 +32,7 @@
 ## 해야할것
 
 - [ ] 캘린더 이벤트 CRUD API (Controller, Service, DTO)
+- [ ] UserAccount에 day_start_time, day_end_time 필드 + 설정 API (GET/PATCH)
+- [ ] Todo CRUD API (목록/상세/상태 변경, Main Agent 생성 연동은 이후)
+- [ ] Report 저장 API (Sub-Agent 제출용)
+- [ ] Spring Scheduler 스켈레톤 (day_start_time / day_end_time 기반 배치 트리거)
