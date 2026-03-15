@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
 
 /** 전역 예외 핸들러. 항상 ResultResponse 포맷으로 반환한다. */
 @RestControllerAdvice
@@ -26,6 +27,13 @@ public class GlobalExceptionHandler {
         ResultResponse.error(HttpStatus.BAD_REQUEST.value(), "요청 값이 올바르지 않습니다.");
 
     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+  }
+
+  @ExceptionHandler(NoHandlerFoundException.class)
+  public ResponseEntity<ResultResponse<Void>> handleNoHandlerFound(NoHandlerFoundException ex) {
+    ResultResponse<Void> body =
+        ResultResponse.error(HttpStatus.NOT_FOUND.value(), "요청한 경로를 찾을 수 없습니다.");
+    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
   }
 
   @ExceptionHandler(IllegalArgumentException.class)

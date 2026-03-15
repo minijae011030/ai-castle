@@ -23,8 +23,8 @@
 - [v] ~~MySQL env 설정 (application.properties + .env, direnv)~~
 - [v] ~~ResultResponse + 전역 예외 처리 + GET /api/health~~
 - [v] ~~CORS 설정~~
+- [v] ~~로그인/회원가입 API + JWT 발급, 인증 필터~~
 
 ## 해야할것
 
-- [ ] 로그인/회원가입 API + JWT 발급, 인증 필터
 - [ ] 캘린더 이벤트 CRUD API (Controller, Service, DTO)
