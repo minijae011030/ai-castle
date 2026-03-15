@@ -7,10 +7,10 @@
 - [v] ~~health-service, types/health.type.ts~~
 - [v] ~~frontend_rules.md 타입 규칙 추가 (3.2, types 도메인별)~~
 - [v] ~~로그인 (JWT 발급, 로그인 페이지, 보호 라우트)~~
+- [v] ~~캘린더 이벤트 API 연동 (목록/추가 화면)~~
 
 ## 해야할것
 
-- [ ] 캘린더 이벤트 API 연동 (목록/추가 화면)
 - [ ] 사용자 일과 시간 설정 화면 (day_start_time, day_end_time)
 - [ ] Todo 목록/상세 화면 (AI 생성 일정 확인·협상 버튼)
 - [ ] 리포트/피드백 화면 (End Batch 요약)
@@ -28,10 +28,10 @@
 - [v] ~~ResultResponse + 전역 예외 처리 + GET /api/health~~
 - [v] ~~CORS 설정~~
 - [v] ~~로그인/회원가입 API + JWT 발급, 인증 필터~~
+- [v] ~~캘린더 이벤트 CRUD API (Controller, Service, DTO)~~
 
 ## 해야할것
 
-- [ ] 캘린더 이벤트 CRUD API (Controller, Service, DTO)
 - [ ] UserAccount에 day_start_time, day_end_time 필드 + 설정 API (GET/PATCH)
 - [ ] Todo CRUD API (목록/상세/상태 변경, Main Agent 생성 연동은 이후)
 - [ ] Report 저장 API (Sub-Agent 제출용)

@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { format_date_time } from '@/lib/format'
 import type { CalendarEventInterface } from '@/types/calendar.type'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
@@ -12,7 +13,6 @@ interface CalendarEventListSectionPropsInterface {
   on_click_create: () => void
   on_click_edit: (event: CalendarEventInterface) => void
   on_click_delete: (id: number) => void
-  to_datetime_local: (iso: string) => string
 }
 
 const CalendarEventListSection = ({
@@ -22,7 +22,6 @@ const CalendarEventListSection = ({
   on_click_create,
   on_click_edit,
   on_click_delete,
-  to_datetime_local,
 }: CalendarEventListSectionPropsInterface) => {
   return (
     <div className="min-w-0 flex-1 rounded-lg border bg-card p-4">
@@ -67,7 +66,7 @@ const CalendarEventListSection = ({
               </CardHeader>
               <CardContent className="space-y-1 text-sm text-muted-foreground">
                 <p>
-                  {to_datetime_local(event.startAt)} ~ {to_datetime_local(event.endAt)}
+                  {format_date_time(event.startAt)} ~ {format_date_time(event.endAt)}
                 </p>
                 {event.memo && <p className="line-clamp-2">{event.memo}</p>}
               </CardContent>

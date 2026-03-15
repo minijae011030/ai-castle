@@ -39,12 +39,6 @@ function toApiDatetime(value: string): string {
   return value.length === 16 ? `${value}:00` : value
 }
 
-/** API ISO 문자열 → datetime-local value */
-function toDatetimeLocal(iso: string): string {
-  if (!iso) return ''
-  return iso.slice(0, 16)
-}
-
 /** 이벤트가 해당 날짜에 걸쳐 있는지 (해당 날 하루 중에라도 겹치면 true) */
 function isEventOnDate(event: CalendarEventInterface, date: Date): boolean {
   const day_start = startOfDay(date)
@@ -97,8 +91,8 @@ const CalendarPage = () => {
     set_editing_event(event)
     set_form({
       title: event.title,
-      startAt: toDatetimeLocal(event.startAt),
-      endAt: toDatetimeLocal(event.endAt),
+      startAt: event.startAt.slice(0, 16),
+      endAt: event.endAt.slice(0, 16),
       memo: event.memo ?? '',
     })
     set_dialog_open(true)
@@ -179,7 +173,6 @@ const CalendarPage = () => {
         on_click_create={open_create}
         on_click_edit={open_edit}
         on_click_delete={(id) => set_delete_target_id(id)}
-        to_datetime_local={toDatetimeLocal}
       />
 
       {/* 추가/수정 다이얼로그 */}
