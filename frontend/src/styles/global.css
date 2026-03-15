@@ -5,74 +5,72 @@
 @custom-variant dark (&:is(.dark *));
 
 /* =========================================
-   👑 AI Castle VVIP Theme (Light Mode)
+   기본 대시보드 테마 (Light)
    ========================================= */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 3.9%;
+  --background: 0 0% 98%;
+  --foreground: 222 47% 11%;
 
   --card: 0 0% 100%;
-  --card-foreground: 0 0% 3.9%;
+  --card-foreground: 222 47% 11%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 3.9%;
+  --popover-foreground: 222 47% 11%;
 
-  /* Primary & Accent: VVIP Gold (#D4AF37) */
-  --primary: 46 65% 52%;
-  --primary-foreground: 0 0% 100%;
+  /* Primary: 슬레이트 블루 */
+  --primary: 222 47% 42%;
+  --primary-foreground: 0 0% 98%;
 
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 0 0% 9%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
 
-  --muted: 0 0% 96.1%;
-  --muted-foreground: 0 0% 45.1%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
 
-  --accent: 46 65% 52%;
-  --accent-foreground: 0 0% 9%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
 
-  --destructive: 0 84.2% 60.2%;
+  --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 98%;
 
-  --border: 0 0% 89.8%;
-  --input: 0 0% 89.8%;
-  --ring: 46 65% 52%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 222 47% 42%;
 
   --radius: 0.5rem;
 }
 
 /* =========================================
-   👑 AI Castle VVIP Theme (Dark Mode)
+   기본 대시보드 테마 (Dark)
    ========================================= */
 .dark {
-  /* Background: True Black (#0A0A0A) */
-  --background: 0 0% 4%;
-  --foreground: 0 0% 98%;
+  --background: 222 47% 6%;
+  --foreground: 210 40% 98%;
 
-  --card: 0 0% 4%;
-  --card-foreground: 0 0% 98%;
+  --card: 222 47% 8%;
+  --card-foreground: 210 40% 98%;
 
-  --popover: 0 0% 4%;
-  --popover-foreground: 0 0% 98%;
+  --popover: 222 47% 8%;
+  --popover-foreground: 210 40% 98%;
 
-  /* Primary & Accent: VVIP Gold (#D4AF37) */
-  --primary: 46 65% 52%;
-  --primary-foreground: 0 0% 9%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 47% 11%;
 
-  --secondary: 0 0% 14.9%;
-  --secondary-foreground: 0 0% 98%;
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 98%;
 
-  --muted: 0 0% 14.9%;
-  --muted-foreground: 0 0% 63.9%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
 
-  --accent: 46 65% 52%;
-  --accent-foreground: 0 0% 9%;
+  --accent: 217 33% 17%;
+  --accent-foreground: 210 40% 98%;
 
-  --destructive: 0 62.8% 30.6%;
+  --destructive: 0 62% 30%;
   --destructive-foreground: 0 0% 98%;
 
-  --border: 0 0% 14.9%;
-  --input: 0 0% 14.9%;
-  --ring: 46 65% 52%;
+  --border: 217 33% 17%;
+  --input: 217 33% 17%;
+  --ring: 217 91% 60%;
 }
 
 /* =========================================
