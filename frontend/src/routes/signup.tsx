@@ -1,13 +1,8 @@
+import { requireGuest } from '@/lib/route-auth'
 import { SignUpPage } from '@/pages/signup/signup-page'
-import { createFileRoute, redirect } from '@tanstack/react-router'
-import { useUserStore } from '@/stores/user.store'
+import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/signup')({
-  beforeLoad: () => {
-    const token = useUserStore.getState().accessToken
-    if (token) {
-      throw redirect({ to: '/' })
-    }
-  },
+  beforeLoad: requireGuest,
   component: SignUpPage,
 })
