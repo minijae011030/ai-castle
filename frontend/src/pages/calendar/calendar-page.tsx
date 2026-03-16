@@ -10,7 +10,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   useCalendarEventList,
   useCreateCalendarEvent,
@@ -18,6 +17,7 @@ import {
   useUpdateCalendarEvent,
 } from '@/hooks/queries/calendar-query'
 import { useRecurringScheduleList } from '@/hooks/queries/recurring-schedule-query'
+import { useTodoListByDate } from '@/hooks/queries/todo-query'
 import type { CalendarEventInterface } from '@/types/calendar.type'
 import { endOfDay, format, isWithinInterval, parseISO, startOfDay } from 'date-fns'
 import { ko } from 'date-fns/locale'
@@ -35,6 +35,7 @@ import {
 import { CalendarDayCell } from '@/components/calendar/calendar-day-cell'
 import { CalendarEventListSection } from '@/components/calendar/calendar-event-list-section'
 import { RecurringScheduleSection } from '@/components/calendar/recurring-schedule-section'
+import { TodayTodoSection } from '@/components/calendar/today-todo-section'
 
 /** datetime-local 값 → API용 ISO 형식 (초 포함) */
 function toApiDatetime(value: string): string {
@@ -75,32 +76,13 @@ const CalendarPage = () => {
   const [form, set_form] = useState(default_form)
   const [delete_target_id, set_delete_target_id] = useState<number | null>(null)
 
+  const selected_date_str = useMemo(() => format(selected_date, 'yyyy-MM-dd'), [selected_date])
+  const { data: todos = [] } = useTodoListByDate(selected_date_str)
+
   const events_on_selected = useMemo(
     () => events.filter((e) => isEventOnDate(e, selected_date)),
     [events, selected_date],
   )
-
-  const open_create = useCallback(() => {
-    set_editing_event(null)
-    const base = format(selected_date, 'yyyy-MM-dd')
-    set_form({
-      ...default_form,
-      startAt: `${base}T09:00`,
-      endAt: `${base}T10:00`,
-    })
-    set_dialog_open(true)
-  }, [selected_date])
-
-  const open_edit = useCallback((event: CalendarEventInterface) => {
-    set_editing_event(event)
-    set_form({
-      title: event.title,
-      startAt: event.startAt.slice(0, 16),
-      endAt: event.endAt.slice(0, 16),
-      memo: event.memo ?? '',
-    })
-    set_dialog_open(true)
-  }, [])
 
   const close_dialog = useCallback(() => {
     set_dialog_open(false)
@@ -176,27 +158,39 @@ const CalendarPage = () => {
         />
       </div>
 
-      {/* 오른쪽: 일정 / 정기 일정 탭 */}
-      <div className="min-w-0 flex-1">
-        <Tabs defaultValue="single" className="flex h-full flex-col gap-3">
-          <TabsList className="w-fit">
-            <TabsTrigger value="single">일정</TabsTrigger>
-            <TabsTrigger value="recurring">정기 일정</TabsTrigger>
-          </TabsList>
-          <TabsContent value="single" className="flex-1">
-            <CalendarEventListSection
-              selected_date={selected_date}
-              events_on_selected={events_on_selected}
-              is_pending={isPending}
-              on_click_create={open_create}
-              on_click_edit={open_edit}
-              on_click_delete={(id) => set_delete_target_id(id)}
-            />
-          </TabsContent>
-          <TabsContent value="recurring" className="flex-1">
-            <RecurringScheduleSection />
-          </TabsContent>
-        </Tabs>
+      {/* 오른쪽: 정기 일정 + 일정 + Todo 를 한 컬럼에서 카드로 표시 */}
+      <div className="min-w-0 flex-1 space-y-3">
+        <h2 className="font-semibold">
+          {format(selected_date, 'yyyy년 M월 d일 (EEE)', { locale: ko })}
+        </h2>
+        <RecurringScheduleSection />
+        <CalendarEventListSection
+          selected_date={selected_date}
+          events_on_selected={events_on_selected}
+          is_pending={isPending}
+          on_click_create={() => {
+            const base = format(selected_date, 'yyyy-MM-dd')
+            set_editing_event(null)
+            set_form({
+              ...default_form,
+              startAt: `${base}T09:00`,
+              endAt: `${base}T10:00`,
+            })
+            set_dialog_open(true)
+          }}
+          on_click_edit={(event) => {
+            set_editing_event(event)
+            set_form({
+              title: event.title,
+              startAt: event.startAt.slice(0, 16),
+              endAt: event.endAt.slice(0, 16),
+              memo: event.memo ?? '',
+            })
+            set_dialog_open(true)
+          }}
+          on_click_delete={(id) => set_delete_target_id(id)}
+        />
+        <TodayTodoSection todos={todos} />
       </div>
 
       {/* 추가/수정 다이얼로그 */}

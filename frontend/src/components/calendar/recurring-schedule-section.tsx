@@ -164,9 +164,8 @@ const RecurringScheduleSection = () => {
   }
 
   return (
-    <div className="min-w-0 flex-1 space-y-3 rounded-lg border bg-card p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-semibold text-sm">정기 일정</h2>
+    <div className="min-w-0 flex-1 space-y-2">
+      <div className="flex items-center justify-end gap-2">
         <Button size="sm" variant="outline" onClick={handle_open}>
           + 정기 일정 추가
         </Button>
