@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
 import type { CalendarEventInterface } from '@/types/calendar.type'
+import type { RecurringScheduleDataInterface } from '@/types/recurring-schedule.type'
 import { endOfDay, format, isWithinInterval, parseISO, startOfDay } from 'date-fns'
 import React, { useMemo } from 'react'
 
@@ -30,18 +31,57 @@ interface CalendarDayCellPropsInterface extends React.ButtonHTMLAttributes<HTMLB
   day: { date: Date }
   modifiers: Record<string, boolean>
   events: CalendarEventInterface[]
+  recurring_schedules: RecurringScheduleDataInterface[]
   locale?: { code?: string }
+}
+
+type CellItemInterface = {
+  key: string
+  title: string
 }
 
 /** 캘린더 셀: 왼쪽 위 날짜 + 제목 최대 2개 + +N 배지 */
 const CalendarDayCell = React.forwardRef<HTMLButtonElement, CalendarDayCellPropsInterface>(
-  ({ day, modifiers, events, locale, className, ...button_props }, ref) => {
+  ({ day, modifiers, events, recurring_schedules, locale, className, ...button_props }, ref) => {
     const day_events = useMemo(
       () => events.filter((event) => isEventOnDate(event, day.date)),
       [events, day.date],
     )
-    const show_events = day_events.slice(0, MAX_EVENTS_IN_CELL)
-    const rest_count = day_events.length - MAX_EVENTS_IN_CELL
+
+    const recurring_titles = useMemo(() => {
+      if (!recurring_schedules.length) return [] as string[]
+      const weekday_ix = day.date.getDay() // 0 (Sun) - 6 (Sat)
+
+      const code = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][weekday_ix]
+      return recurring_schedules
+        .filter((s) => {
+          if (!s.periodStart || !s.periodEnd) return false
+          const d_iso = day.date.toISOString().slice(0, 10)
+          const in_range = d_iso >= s.periodStart && d_iso <= s.periodEnd
+          if (!in_range) return false
+          if (!s.weekdays) return false
+          return s.weekdays
+            .split(',')
+            .map((w) => w.trim())
+            .includes(code)
+        })
+        .map((s) => s.title)
+    }, [recurring_schedules, day.date])
+
+    const items: CellItemInterface[] = useMemo(() => {
+      const normal_items = day_events.map<CellItemInterface>((e) => ({
+        key: `e-${e.id}`,
+        title: e.title,
+      }))
+      const recurring_items = recurring_titles.map<CellItemInterface>((title, index) => ({
+        key: `r-${index}-${day.date.toISOString().slice(0, 10)}`,
+        title,
+      }))
+      return [...normal_items, ...recurring_items]
+    }, [day_events, recurring_titles, day.date])
+
+    const show_items = items.slice(0, MAX_EVENTS_IN_CELL)
+    const rest_count = items.length - MAX_EVENTS_IN_CELL
 
     return (
       <button
@@ -62,13 +102,13 @@ const CalendarDayCell = React.forwardRef<HTMLButtonElement, CalendarDayCellProps
       >
         <span className="shrink-0 font-medium text-inherit">{format(day.date, 'd')}</span>
         <div className="flex min-h-0 w-full flex-1 flex-col gap-0.5 overflow-hidden">
-          {show_events.map((event) => (
+          {show_items.map((item) => (
             <span
-              key={event.id}
+              key={item.key}
               className="block w-full truncate rounded bg-primary/20 px-1 py-0.5 text-[0.65rem] data-[selected-single=true]:bg-primary-foreground/20"
-              title={event.title}
+              title={item.title}
             >
-              {truncateTitle(event.title, TITLE_MAX_LEN)}
+              {truncateTitle(item.title, TITLE_MAX_LEN)}
             </span>
           ))}
           {rest_count > 0 && (

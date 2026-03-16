@@ -10,12 +10,14 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   useCalendarEventList,
   useCreateCalendarEvent,
   useDeleteCalendarEvent,
   useUpdateCalendarEvent,
 } from '@/hooks/queries/calendar-query'
+import { useRecurringScheduleList } from '@/hooks/queries/recurring-schedule-query'
 import type { CalendarEventInterface } from '@/types/calendar.type'
 import { endOfDay, format, isWithinInterval, parseISO, startOfDay } from 'date-fns'
 import { ko } from 'date-fns/locale'
@@ -32,6 +34,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { CalendarDayCell } from '@/components/calendar/calendar-day-cell'
 import { CalendarEventListSection } from '@/components/calendar/calendar-event-list-section'
+import { RecurringScheduleSection } from '@/components/calendar/recurring-schedule-section'
 
 /** datetime-local 값 → API용 ISO 형식 (초 포함) */
 function toApiDatetime(value: string): string {
@@ -61,6 +64,7 @@ const default_form = {
 
 const CalendarPage = () => {
   const { data: events = [], isPending } = useCalendarEventList()
+  const { data: recurring_schedules = [] } = useRecurringScheduleList()
   const create_mutation = useCreateCalendarEvent()
   const update_mutation = useUpdateCalendarEvent()
   const delete_mutation = useDeleteCalendarEvent()
@@ -160,20 +164,40 @@ const CalendarPage = () => {
             day: 'min-h-[5rem] min-w-[var(--cell-size)] w-[var(--cell-size)] max-w-[var(--cell-size)] aspect-auto align-top',
           }}
           components={{
-            DayButton: (props) => <CalendarDayCell events={events} locale={ko} {...props} />,
+            DayButton: (props) => (
+              <CalendarDayCell
+                events={events}
+                recurring_schedules={recurring_schedules}
+                locale={ko}
+                {...props}
+              />
+            ),
           }}
         />
       </div>
 
-      {/* 오른쪽: 선택한 날짜의 일정 카드 목록 */}
-      <CalendarEventListSection
-        selected_date={selected_date}
-        events_on_selected={events_on_selected}
-        is_pending={isPending}
-        on_click_create={open_create}
-        on_click_edit={open_edit}
-        on_click_delete={(id) => set_delete_target_id(id)}
-      />
+      {/* 오른쪽: 일정 / 정기 일정 탭 */}
+      <div className="min-w-0 flex-1">
+        <Tabs defaultValue="single" className="flex h-full flex-col gap-3">
+          <TabsList className="w-fit">
+            <TabsTrigger value="single">일정</TabsTrigger>
+            <TabsTrigger value="recurring">정기 일정</TabsTrigger>
+          </TabsList>
+          <TabsContent value="single" className="flex-1">
+            <CalendarEventListSection
+              selected_date={selected_date}
+              events_on_selected={events_on_selected}
+              is_pending={isPending}
+              on_click_create={open_create}
+              on_click_edit={open_edit}
+              on_click_delete={(id) => set_delete_target_id(id)}
+            />
+          </TabsContent>
+          <TabsContent value="recurring" className="flex-1">
+            <RecurringScheduleSection />
+          </TabsContent>
+        </Tabs>
+      </div>
 
       {/* 추가/수정 다이얼로그 */}
       <Dialog open={dialog_open} onOpenChange={(open) => !open && close_dialog()}>

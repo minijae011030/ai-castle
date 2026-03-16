@@ -1,0 +1,37 @@
+import { API } from '@/lib/client'
+import type {
+  RecurringScheduleCreateBodyInterface,
+  RecurringScheduleDataInterface,
+  RecurringScheduleListResponseInterface,
+} from '@/types/recurring-schedule.type'
+
+const BASE = '/api/calendar/recurring-schedules'
+
+export async function get_recurring_schedule_list(): Promise<RecurringScheduleDataInterface[]> {
+  const res = await API.get<RecurringScheduleListResponseInterface>(BASE)
+
+  if (res.status !== 200 || !res.data) {
+    throw new Error(res.message ?? '정기 일정 목록을 불러오지 못했습니다.')
+  }
+
+  return res.data
+}
+
+export async function create_recurring_schedule(
+  body: RecurringScheduleCreateBodyInterface,
+): Promise<RecurringScheduleDataInterface> {
+  const res = await API.post<
+    {
+      status: number
+      message: string
+      data: RecurringScheduleDataInterface | null
+    },
+    RecurringScheduleCreateBodyInterface
+  >(BASE, body)
+
+  if (res.status !== 200 || !res.data) {
+    throw new Error(res.message ?? '정기 일정을 등록하지 못했습니다.')
+  }
+
+  return res.data
+}
