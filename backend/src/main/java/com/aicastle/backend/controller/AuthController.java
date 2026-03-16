@@ -8,6 +8,7 @@ import com.aicastle.backend.dto.SignUpRequest;
 import com.aicastle.backend.dto.SignUpResponse;
 import com.aicastle.backend.service.AuthService;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
@@ -58,5 +59,48 @@ public class AuthController {
 
     LoginResponse body = new LoginResponse(tokens.accessToken());
     return ResponseEntity.ok(ResultResponse.success("로그인되었습니다.", body));
+  }
+
+  @PostMapping("/refresh")
+  public ResponseEntity<ResultResponse<LoginResponse>> refresh(
+      HttpServletRequest request, HttpServletResponse response) {
+    Cookie[] cookies = request.getCookies();
+    if (cookies == null) {
+      return unauthorized("리프레시 토큰이 없습니다.");
+    }
+
+    String refreshToken = null;
+    for (Cookie cookie : cookies) {
+      if (REFRESH_TOKEN_COOKIE_NAME.equals(cookie.getName())) {
+        refreshToken = cookie.getValue();
+        break;
+      }
+    }
+
+    if (refreshToken == null || refreshToken.isEmpty()) {
+      return unauthorized("리프레시 토큰이 없습니다.");
+    }
+
+    try {
+      LoginTokens tokens = authService.refreshTokens(refreshToken);
+
+      Cookie newRefreshCookie = new Cookie(REFRESH_TOKEN_COOKIE_NAME, tokens.refreshToken());
+      newRefreshCookie.setHttpOnly(true);
+      newRefreshCookie.setPath("/");
+      newRefreshCookie.setMaxAge(REFRESH_COOKIE_MAX_AGE_SECONDS);
+      newRefreshCookie.setSecure(refreshCookieSecure);
+      newRefreshCookie.setAttribute("SameSite", "Lax");
+      response.addCookie(newRefreshCookie);
+
+      LoginResponse body = new LoginResponse(tokens.accessToken());
+      return ResponseEntity.ok(ResultResponse.success("토큰이 재발급되었습니다.", body));
+    } catch (IllegalArgumentException ex) {
+      return unauthorized(ex.getMessage());
+    }
+  }
+
+  private ResponseEntity<ResultResponse<LoginResponse>> unauthorized(String message) {
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        .body(ResultResponse.error(HttpStatus.UNAUTHORIZED.value(), message));
   }
 }

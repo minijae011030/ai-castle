@@ -61,4 +61,21 @@ public class AuthService {
     String refreshToken = jwtService.createRefreshToken(user.getId(), user.getEmail());
     return new LoginTokens(accessToken, refreshToken);
   }
+
+  /** refresh 토큰으로 access/refresh 토큰 재발급. */
+  public LoginTokens refreshTokens(String refreshToken) {
+    if (!jwtService.isRefreshToken(refreshToken)) {
+      throw new IllegalArgumentException("리프레시 토큰이 유효하지 않습니다.");
+    }
+
+    Long userId = jwtService.getUserIdFromToken(refreshToken);
+    UserAccount user =
+        userAccountRepository
+            .findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+    String newAccessToken = jwtService.createAccessToken(user.getId(), user.getEmail());
+    String newRefreshToken = jwtService.createRefreshToken(user.getId(), user.getEmail());
+    return new LoginTokens(newAccessToken, newRefreshToken);
+  }
 }

@@ -15,7 +15,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
-  @Value("${cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
+  @Value(
+      "${cors.allowed-origins:http://localhost:5173,http://localhost:3000,https://localhost:5173,https://localhost:3000}")
   private String allowedOrigins;
 
   /** Spring Security 필터 체인에서 CORS preflight 허용용. */
