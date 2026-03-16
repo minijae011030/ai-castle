@@ -17,7 +17,7 @@ import { useUserStore } from '@/stores/user.store'
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { CalendarIcon, HomeIcon, LogOutIcon, SettingsIcon, UsersIcon } from 'lucide-react'
 
-const AppSidebar = () => {
+export const AppSidebar = () => {
   const navigate = useNavigate()
   const router_state = useRouterState()
   const pathname = router_state.location.pathname
@@ -103,5 +103,3 @@ const AppSidebar = () => {
     </SidebarProvider>
   )
 }
-
-export { AppSidebar }

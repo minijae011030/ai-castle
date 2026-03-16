@@ -80,7 +80,7 @@ interface RecurringScheduleSectionPropsInterface {
   on_toggle_completed: (id: number) => void
 }
 
-const RecurringScheduleSection = ({
+export const RecurringScheduleSection = ({
   selected_date,
   recurring_schedules,
   is_pending,
@@ -90,8 +90,10 @@ const RecurringScheduleSection = ({
   const create_mutation = useCreateRecurringSchedule()
   const update_mutation = useUpdateRecurringSchedule()
   const delete_mutation = useDeleteRecurringSchedule()
+
   const [dialog_open, set_dialog_open] = useState(false)
   const [editing_item, set_editing_item] = useState<RecurringScheduleDataInterface | null>(null)
+
   const [title, set_title] = useState('')
   const [start_date, set_start_date] = useState('')
   const [end_date, set_end_date] = useState('')
@@ -104,7 +106,7 @@ const RecurringScheduleSection = ({
     set_dialog_open(false)
   }
 
-  const handle_edit_open = (item: RecurringScheduleDataInterface) => {
+  const handleEditOpen = (item: RecurringScheduleDataInterface) => {
     set_editing_item(item)
     set_title(item.title)
     set_start_date(item.periodStart)
@@ -116,7 +118,7 @@ const RecurringScheduleSection = ({
     set_dialog_open(true)
   }
 
-  const toggle_weekday = (value: WeekdayValue) => {
+  const toggleWeekday = (value: WeekdayValue) => {
     set_weekdays((prev) =>
       prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
     )
@@ -132,7 +134,7 @@ const RecurringScheduleSection = ({
     end_time &&
     start_time < end_time
 
-  const handle_submit = async () => {
+  const handleSubmit = async () => {
     if (!is_valid) return
     const payload = {
       title: title.trim(),
@@ -155,7 +157,7 @@ const RecurringScheduleSection = ({
     handle_close()
   }
 
-  const handle_delete = async (id: number) => {
+  const handleDelete = async (id: number) => {
     const confirmed = window.confirm(
       '이 정기 일정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
     )
@@ -222,7 +224,7 @@ const RecurringScheduleSection = ({
                   variant="ghost"
                   size="icon-sm"
                   aria-label="정기 일정 수정"
-                  onClick={() => handle_edit_open(item)}
+                  onClick={() => handleEditOpen(item)}
                 >
                   <PencilIcon className="size-4" />
                 </Button>
@@ -231,7 +233,7 @@ const RecurringScheduleSection = ({
                   variant="ghost"
                   size="icon-sm"
                   aria-label="정기 일정 삭제"
-                  onClick={() => handle_delete(item.id)}
+                  onClick={() => handleDelete(item.id)}
                   disabled={delete_mutation.isPending}
                 >
                   <Trash2Icon className="size-4" />
@@ -305,7 +307,7 @@ const RecurringScheduleSection = ({
                       size="xs"
                       variant={active ? 'default' : 'outline'}
                       className={cn('h-7 px-2 text-xs', active && 'font-semibold')}
-                      onClick={() => toggle_weekday(opt.value)}
+                      onClick={() => toggleWeekday(opt.value)}
                     >
                       {opt.label}
                     </Button>
@@ -350,7 +352,7 @@ const RecurringScheduleSection = ({
             <Button type="button" variant="outline" size="sm" onClick={handle_close}>
               취소
             </Button>
-            <Button type="button" size="sm" onClick={handle_submit} disabled={!is_valid}>
+            <Button type="button" size="sm" onClick={handleSubmit} disabled={!is_valid}>
               저장
             </Button>
           </DialogFooter>
@@ -359,5 +361,3 @@ const RecurringScheduleSection = ({
     </div>
   )
 }
-
-export { RecurringScheduleSection }

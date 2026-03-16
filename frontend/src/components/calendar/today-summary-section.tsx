@@ -14,7 +14,7 @@ interface TodaySummarySectionPropsInterface {
   todos: TodoItemInterface[]
 }
 
-const TodaySummarySection = ({
+export const TodaySummarySection = ({
   selected_date,
   events_on_selected,
   is_event_pending,
@@ -153,5 +153,3 @@ const TodaySummarySection = ({
     </div>
   )
 }
-
-export { TodaySummarySection }

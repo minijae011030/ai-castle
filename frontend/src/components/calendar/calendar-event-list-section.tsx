@@ -15,7 +15,7 @@ interface CalendarEventListSectionPropsInterface {
   on_toggle_completed: (id: number) => void
 }
 
-const CalendarEventListSection = ({
+export const CalendarEventListSection = ({
   events_on_selected,
   is_pending,
   on_click_edit,
@@ -87,5 +87,3 @@ const CalendarEventListSection = ({
     </div>
   )
 }
-
-export { CalendarEventListSection }

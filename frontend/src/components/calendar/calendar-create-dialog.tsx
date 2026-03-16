@@ -14,6 +14,7 @@ import { useCreateCalendarEvent as useCreateEvent } from '@/hooks/queries/calend
 import { useCreateRecurringSchedule } from '@/hooks/queries/recurring-schedule-query'
 import { useCreateTodo } from '@/hooks/queries/todo-query'
 import { toApiDatetime } from '@/lib/format'
+import type { CalendarEventCreateBodyInterface } from '@/types/calendar.type'
 import type { RecurringScheduleCreateBodyInterface } from '@/types/recurring-schedule.type'
 import type { TodoCreateBodyInterface } from '@/types/todo.type'
 import { format } from 'date-fns'
@@ -24,7 +25,7 @@ interface CalendarCreateDialogPropsInterface {
   selected_date_str: string
 }
 
-const CalendarCreateDialog = ({
+export const CalendarCreateDialog = ({
   selected_date,
   selected_date_str,
 }: CalendarCreateDialogPropsInterface) => {
@@ -56,7 +57,51 @@ const CalendarCreateDialog = ({
   const [todo_agent_role_id, set_todo_agent_role_id] = useState<string>('1')
   const [todo_order_index, set_todo_order_index] = useState<string>('')
 
-  const reset_and_open = () => {
+  // 단일 일정 저장 버튼 클릭 핸들러
+  const handleClickSaveEvent = () => {
+    const payload: CalendarEventCreateBodyInterface = {
+      title: create_event_title.trim(),
+      startAt: toApiDatetime(create_event_start_at),
+      endAt: toApiDatetime(create_event_end_at),
+      memo: create_event_memo.trim() || undefined,
+    }
+
+    create_event_mutation.mutate(payload, {
+      onSuccess: () => set_open(false),
+    })
+  }
+
+  const handleClickSaveRecurring = async () => {
+    const payload: RecurringScheduleCreateBodyInterface = {
+      title: recurring_title.trim(),
+      periodStart: recurring_start_date,
+      periodEnd: recurring_end_date,
+      weekdays: recurring_weekdays.join(','),
+      startTime: recurring_start_time,
+      endTime: recurring_end_time,
+      memo: recurring_memo.trim() || undefined,
+    }
+
+    await create_recurring_mutation.mutateAsync(payload, {
+      onSuccess: () => set_open(false),
+    })
+  }
+
+  const handleClickSaveTodo = () => {
+    const payload: TodoCreateBodyInterface = {
+      agentRoleId: Number(todo_agent_role_id),
+      title: todo_title.trim(),
+      description: todo_description.trim() || undefined,
+      scheduledDate: selected_date_str,
+      orderIndex: todo_order_index ? Number(todo_order_index) : undefined,
+    }
+
+    create_todo_mutation.mutate(payload, {
+      onSuccess: () => set_open(false),
+    })
+  }
+
+  const resetAndOpen = () => {
     const base = format(selected_date, 'yyyy-MM-dd')
     const weekday_by_index: string[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
     const selected_weekday_code = weekday_by_index[selected_date.getDay()]
@@ -89,7 +134,7 @@ const CalendarCreateDialog = ({
 
   return (
     <>
-      <Button size="sm" variant="outline" onClick={reset_and_open}>
+      <Button size="sm" variant="outline" onClick={resetAndOpen}>
         + 추가
       </Button>
 
@@ -189,7 +234,7 @@ const CalendarCreateDialog = ({
                   id="create-recurring-memo"
                   value={recurring_memo}
                   onChange={(e) => set_recurring_memo(e.target.value)}
-                  placeholder="예: 매장 A, 주휴수당 포함 등"
+                  placeholder="예: 매장 A"
                   rows={3}
                 />
               </div>
@@ -208,21 +253,7 @@ const CalendarCreateDialog = ({
                     recurring_start_time >= recurring_end_time ||
                     create_recurring_mutation.isPending
                   }
-                  onClick={async () => {
-                    const payload: RecurringScheduleCreateBodyInterface = {
-                      title: recurring_title.trim(),
-                      periodStart: recurring_start_date,
-                      periodEnd: recurring_end_date,
-                      weekdays: recurring_weekdays.join(','),
-                      startTime: recurring_start_time,
-                      endTime: recurring_end_time,
-                      memo: recurring_memo.trim() || undefined,
-                    }
-
-                    await create_recurring_mutation.mutateAsync(payload, {
-                      onSuccess: () => set_open(false),
-                    })
-                  }}
+                  onClick={handleClickSaveRecurring}
                 >
                   저장
                 </Button>
@@ -278,24 +309,7 @@ const CalendarCreateDialog = ({
                     !create_event_end_at ||
                     create_event_mutation.isPending
                   }
-                  onClick={() => {
-                    const title = create_event_title.trim()
-                    const start_at = toApiDatetime(create_event_start_at)
-                    const end_at = toApiDatetime(create_event_end_at)
-                    if (!title || !start_at || !end_at) return
-
-                    create_event_mutation.mutate(
-                      {
-                        title,
-                        startAt: start_at,
-                        endAt: end_at,
-                        memo: create_event_memo.trim() || undefined,
-                      },
-                      {
-                        onSuccess: () => set_open(false),
-                      },
-                    )
-                  }}
+                  onClick={handleClickSaveEvent}
                 >
                   저장
                 </Button>
@@ -352,21 +366,7 @@ const CalendarCreateDialog = ({
                     !todo_agent_role_id.trim() ||
                     create_todo_mutation.isPending
                   }
-                  onClick={() => {
-                    const body: TodoCreateBodyInterface = {
-                      agentRoleId: Number(todo_agent_role_id),
-                      title: todo_title.trim(),
-                      description: todo_description.trim() || undefined,
-                      scheduledDate: selected_date_str,
-                      orderIndex: todo_order_index ? Number(todo_order_index) : undefined,
-                    }
-
-                    if (!body.agentRoleId || Number.isNaN(body.agentRoleId)) return
-
-                    create_todo_mutation.mutate(body, {
-                      onSuccess: () => set_open(false),
-                    })
-                  }}
+                  onClick={handleClickSaveTodo}
                 >
                   저장
                 </Button>
@@ -378,5 +378,3 @@ const CalendarCreateDialog = ({
     </>
   )
 }
-
-export { CalendarCreateDialog }

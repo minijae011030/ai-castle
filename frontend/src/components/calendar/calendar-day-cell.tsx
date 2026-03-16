@@ -41,7 +41,7 @@ type CellItemInterface = {
 }
 
 /** 캘린더 셀: 왼쪽 위 날짜 + 제목 최대 2개 + +N 배지 */
-const CalendarDayCell = React.forwardRef<HTMLButtonElement, CalendarDayCellPropsInterface>(
+export const CalendarDayCell = React.forwardRef<HTMLButtonElement, CalendarDayCellPropsInterface>(
   ({ day, modifiers, events, recurring_schedules, locale, className, ...button_props }, ref) => {
     const day_events = useMemo(
       () => events.filter((event) => isEventOnDate(event, day.date)),
@@ -123,5 +123,3 @@ const CalendarDayCell = React.forwardRef<HTMLButtonElement, CalendarDayCellProps
 )
 
 CalendarDayCell.displayName = 'CalendarDayCell'
-
-export { CalendarDayCell }

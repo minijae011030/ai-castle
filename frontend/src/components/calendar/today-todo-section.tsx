@@ -9,7 +9,7 @@ interface TodayTodoSectionPropsInterface {
   on_toggle_completed: (todo: TodoItemInterface) => void
 }
 
-const TodayTodoSection = ({
+export const TodayTodoSection = ({
   todos,
   is_pending,
   on_toggle_completed,
@@ -84,5 +84,3 @@ const TodayTodoSection = ({
     </div>
   )
 }
-
-export { TodayTodoSection }
