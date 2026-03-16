@@ -79,6 +79,10 @@ const CalendarPage = () => {
   const create_todo_mutation = useCreateTodo()
 
   const [selected_date, set_selected_date] = useState<Date>(() => new Date())
+  // 사용자가 완료 처리한 일정/정기일정/할 일 ID 목록 (프론트 로컬 상태)
+  const [completed_event_ids, set_completed_event_ids] = useState<number[]>([])
+  const [completed_recurring_ids, set_completed_recurring_ids] = useState<number[]>([])
+  const [completed_todo_ids, set_completed_todo_ids] = useState<number[]>([])
 
   // 일정(단일 이벤트) 수정/추가 다이얼로그 (기존)
   const [event_dialog_open, set_event_dialog_open] = useState(false)
@@ -194,7 +198,11 @@ const CalendarPage = () => {
         <Calendar
           mode="single"
           selected={selected_date}
-          onSelect={(d) => d && set_selected_date(d)}
+          onSelect={(d) => {
+            if (!d) return
+            // 날짜 변경 시 선택 날짜만 바꾸고, 완료 체크 상태는 유지
+            set_selected_date(d)
+          }}
           locale={ko}
           className="[--cell-size:6rem]"
           classNames={{
@@ -259,6 +267,15 @@ const CalendarPage = () => {
           selected_date={selected_date}
           recurring_schedules={recurring_schedules}
           is_pending={isRecurringPending}
+          completed_recurring_ids={completed_recurring_ids}
+          on_toggle_completed={(id) => {
+            // 정기 일정 완료 토글
+            set_completed_recurring_ids((prev_ids) =>
+              prev_ids.includes(id)
+                ? prev_ids.filter((recurring_id) => recurring_id !== id)
+                : [...prev_ids, id],
+            )
+          }}
         />
         <CalendarEventListSection
           events_on_selected={events_on_selected}
@@ -274,8 +291,29 @@ const CalendarPage = () => {
             set_event_dialog_open(true)
           }}
           on_click_delete={(id) => set_delete_target_id(id)}
+          completed_event_ids={completed_event_ids}
+          on_toggle_completed={(id) => {
+            // 일정 완료 토글 (이미 완료면 해제, 아니면 완료로 표시)
+            set_completed_event_ids((prev_ids) =>
+              prev_ids.includes(id)
+                ? prev_ids.filter((event_id) => event_id !== id)
+                : [...prev_ids, id],
+            )
+          }}
         />
-        <TodayTodoSection todos={todos} is_pending={isTodoPending} />
+        <TodayTodoSection
+          todos={todos}
+          is_pending={isTodoPending}
+          completed_todo_ids={completed_todo_ids}
+          on_toggle_completed={(id) => {
+            // Todo 완료 토글
+            set_completed_todo_ids((prev_ids) =>
+              prev_ids.includes(id)
+                ? prev_ids.filter((todo_id) => todo_id !== id)
+                : [...prev_ids, id],
+            )
+          }}
+        />
         {!isPending &&
           !isRecurringPending &&
           !isTodoPending &&

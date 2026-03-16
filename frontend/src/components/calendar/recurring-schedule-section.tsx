@@ -19,7 +19,7 @@ import {
 import type { RecurringScheduleDataInterface } from '@/types/recurring-schedule.type'
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { PencilIcon, Trash2Icon } from 'lucide-react'
+import { CheckCircle2Icon, CircleIcon, PencilIcon, Trash2Icon } from 'lucide-react'
 
 type WeekdayValue = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
@@ -74,12 +74,18 @@ interface RecurringScheduleSectionPropsInterface {
   selected_date: Date
   recurring_schedules: RecurringScheduleDataInterface[]
   is_pending: boolean
+  /** 해당 날짜에서 사용자가 완료 처리한 정기 일정 ID 목록 */
+  completed_recurring_ids: number[]
+  /** 정기 일정 완료 토글 클릭 시 호출되는 콜백 */
+  on_toggle_completed: (id: number) => void
 }
 
 const RecurringScheduleSection = ({
   selected_date,
   recurring_schedules,
   is_pending,
+  completed_recurring_ids,
+  on_toggle_completed,
 }: RecurringScheduleSectionPropsInterface) => {
   const create_mutation = useCreateRecurringSchedule()
   const update_mutation = useUpdateRecurringSchedule()
@@ -186,7 +192,30 @@ const RecurringScheduleSection = ({
         {items_for_selected.map((item: RecurringScheduleDataInterface) => (
           <Card key={item.id} size="sm">
             <CardHeader className="flex items-start justify-between gap-2 pb-2">
-              <p className="text-sm font-medium">{item.title}</p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="정기 일정 완료 토글"
+                  onClick={() => on_toggle_completed(item.id)}
+                >
+                  {completed_recurring_ids.includes(item.id) ? (
+                    <CheckCircle2Icon className="size-4 text-primary" />
+                  ) : (
+                    <CircleIcon className="size-4 text-muted-foreground" />
+                  )}
+                </Button>
+                <p
+                  className={cn(
+                    'text-sm font-medium',
+                    completed_recurring_ids.includes(item.id) &&
+                      'text-muted-foreground line-through',
+                  )}
+                >
+                  {item.title}
+                </p>
+              </div>
               <div className="flex items-center gap-1">
                 <Button
                   type="button"

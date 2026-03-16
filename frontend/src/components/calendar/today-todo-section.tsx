@@ -1,11 +1,22 @@
+import { Button } from '@/components/ui/button'
 import type { TodoItemInterface } from '@/types/todo.type'
+import { CheckCircle2Icon, CircleIcon } from 'lucide-react'
 
 interface TodayTodoSectionPropsInterface {
   todos: TodoItemInterface[]
   is_pending: boolean
+  /** 사용자가 완료 처리한 Todo ID 목록 (또는 Todo.status를 그대로 사용할 수도 있음) */
+  completed_todo_ids: number[]
+  /** Todo 완료 토글 클릭 시 호출되는 콜백 */
+  on_toggle_completed: (id: number) => void
 }
 
-const TodayTodoSection = ({ todos, is_pending }: TodayTodoSectionPropsInterface) => {
+const TodayTodoSection = ({
+  todos,
+  is_pending,
+  completed_todo_ids,
+  on_toggle_completed,
+}: TodayTodoSectionPropsInterface) => {
   const todos_by_agent = todos.reduce<Record<number, TodoItemInterface[]>>((acc, todo) => {
     const agent_id = todo.agent.id
     if (!acc[agent_id]) acc[agent_id] = []
@@ -32,13 +43,36 @@ const TodayTodoSection = ({ todos, is_pending }: TodayTodoSectionPropsInterface)
               {group.map((todo) => (
                 <li key={todo.id}>
                   <div className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2">
-                    <div className="flex-1 truncate">
-                      <p className="text-xs font-medium text-foreground">{todo.title}</p>
-                      {todo.description && (
-                        <p className="text-[11px] text-muted-foreground line-clamp-1">
-                          {todo.description}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Todo 완료 토글"
+                        onClick={() => on_toggle_completed(todo.id)}
+                      >
+                        {completed_todo_ids.includes(todo.id) ? (
+                          <CheckCircle2Icon className="size-4 text-primary" />
+                        ) : (
+                          <CircleIcon className="size-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                      <div className="flex-1 truncate">
+                        <p
+                          className={`text-xs font-medium ${
+                            completed_todo_ids.includes(todo.id)
+                              ? 'text-muted-foreground line-through'
+                              : 'text-foreground'
+                          }`}
+                        >
+                          {todo.title}
                         </p>
-                      )}
+                        {todo.description && (
+                          <p className="text-[11px] text-muted-foreground line-clamp-1">
+                            {todo.description}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
                       {todo.status}

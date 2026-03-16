@@ -2,13 +2,17 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { format_date_time } from '@/lib/format'
 import type { CalendarEventInterface } from '@/types/calendar.type'
-import { PencilIcon, Trash2Icon } from 'lucide-react'
+import { CheckCircle2Icon, CircleIcon, PencilIcon, Trash2Icon } from 'lucide-react'
 
 interface CalendarEventListSectionPropsInterface {
   events_on_selected: CalendarEventInterface[]
   is_pending: boolean
   on_click_edit: (event: CalendarEventInterface) => void
   on_click_delete: (id: number) => void
+  /** 해당 날짜에서 사용자가 완료 처리한 일정 ID 목록 */
+  completed_event_ids: number[]
+  /** 일정 완료 토글 클릭 시 호출되는 콜백 */
+  on_toggle_completed: (id: number) => void
 }
 
 const CalendarEventListSection = ({
@@ -16,6 +20,8 @@ const CalendarEventListSection = ({
   is_pending,
   on_click_edit,
   on_click_delete,
+  completed_event_ids,
+  on_toggle_completed,
 }: CalendarEventListSectionPropsInterface) => {
   if (is_pending || events_on_selected.length === 0) {
     return null
@@ -27,7 +33,29 @@ const CalendarEventListSection = ({
         {events_on_selected.map((event) => (
           <Card key={event.id} size="sm">
             <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-              <span className="text-xs font-medium">{event.title}</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => on_toggle_completed(event.id)}
+                  aria-label="완료 토글"
+                >
+                  {completed_event_ids.includes(event.id) ? (
+                    <CheckCircle2Icon className="size-4 text-primary" />
+                  ) : (
+                    <CircleIcon className="size-4 text-muted-foreground" />
+                  )}
+                </Button>
+                <span
+                  className={`text-xs font-medium ${
+                    completed_event_ids.includes(event.id)
+                      ? 'text-muted-foreground line-through'
+                      : ''
+                  }`}
+                >
+                  {event.title}
+                </span>
+              </div>
               <div className="flex gap-1">
                 <Button
                   variant="ghost"
