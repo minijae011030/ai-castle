@@ -4,13 +4,13 @@ import type {
   UserSettingUpdateBodyInterface,
 } from '@/types/user-setting.type'
 import {
-  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
   type UseMutationOptions,
   type UseQueryOptions,
 } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import { toast } from 'sonner'
 
 export const user_setting_query_keys = {
@@ -18,16 +18,14 @@ export const user_setting_query_keys = {
   detail: () => [...user_setting_query_keys.all, 'detail'] as const,
 }
 
-export const user_setting_query_options = queryOptions({
-  queryKey: user_setting_query_keys.detail(),
-  queryFn: get_user_setting,
-})
-
-export const useUserSetting = (
-  options?: Omit<UseQueryOptions<UserSettingDataInterface, Error>, 'queryKey' | 'queryFn'>,
-) => {
+export const useUserSetting = (options?: UseQueryOptions<UserSettingDataInterface, Error>) => {
   return useQuery({
-    ...user_setting_query_options,
+    queryKey: user_setting_query_keys.detail(),
+    queryFn: async () => {
+      const res = await get_user_setting()
+      return res
+    },
+    select: useCallback((data: UserSettingDataInterface) => data, []),
     ...options,
   })
 }
@@ -39,14 +37,12 @@ export const useUpdateUserSetting = (
   return useMutation({
     ...options,
     mutationFn: update_user_setting,
-    onSuccess: (data, variables, context, mutation) => {
+    onSuccess: (data) => {
       query_client.setQueryData(user_setting_query_keys.detail(), data)
       toast.success('설정이 저장되었습니다.')
-      options?.onSuccess?.(data, variables, context, mutation)
     },
-    onError: (error, variables, context) => {
+    onError: (error) => {
       toast.error(error.message ?? '설정을 저장하지 못했습니다.')
-      options?.onError?.(error, variables, context)
     },
   })
 }

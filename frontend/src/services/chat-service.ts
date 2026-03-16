@@ -12,7 +12,7 @@ import type {
 const MAIN_BASE = '/api/chat/main'
 const AGENT_BASE = '/api/chat/agents'
 
-export async function get_main_chat_history(): Promise<ChatMessageInterface[]> {
+export async function getMainChatHistory(): Promise<ChatMessageInterface[]> {
   const res = await API.get<MainChatHistoryResponseInterface>(MAIN_BASE)
 
   if (res.status !== 200 || !res.data) {
@@ -22,7 +22,7 @@ export async function get_main_chat_history(): Promise<ChatMessageInterface[]> {
   return res.data
 }
 
-export async function send_main_chat_message(
+export async function sendMainChatMessage(
   body: MainChatSendBodyInterface,
 ): Promise<ChatMessageInterface> {
   const res = await API.post<MainChatSendResponseInterface, MainChatSendBodyInterface>(
@@ -37,7 +37,7 @@ export async function send_main_chat_message(
   return res.data
 }
 
-export async function get_agent_chat_history(agent_id: number): Promise<ChatMessageInterface[]> {
+export async function getAgentChatHistory(agent_id: number): Promise<ChatMessageInterface[]> {
   const res = await API.get<AgentChatHistoryResponseInterface>(`${AGENT_BASE}/${agent_id}`)
 
   if (res.status !== 200 || !res.data) {
@@ -47,7 +47,7 @@ export async function get_agent_chat_history(agent_id: number): Promise<ChatMess
   return res.data
 }
 
-export async function send_agent_chat_message(
+export async function sendAgentChatMessage(
   agent_id: number,
   body: AgentChatSendBodyInterface,
 ): Promise<ChatMessageInterface> {

@@ -20,7 +20,6 @@ export const useLogin = (
   const query_client = useQueryClient()
 
   return useMutation({
-    ...options,
     mutationFn: (body: LoginRequestInterface) => login(body),
     onSuccess: (_data, _variables, context, mutation) => {
       query_client.invalidateQueries({ queryKey: auth_query_keys.all })
@@ -30,6 +29,7 @@ export const useLogin = (
       toast.error(error.message ?? '로그인에 실패했습니다.')
       options?.onError?.(error, _variables, _context, mutation)
     },
+    ...options,
   })
 }
 
@@ -40,7 +40,6 @@ export const useSignUp = (
   const query_client = useQueryClient()
 
   return useMutation({
-    ...options,
     mutationFn: (body: SignUpRequestInterface) => signUp(body),
     onSuccess: (_data, _variables, context, mutation) => {
       query_client.invalidateQueries({ queryKey: auth_query_keys.all })
@@ -50,5 +49,6 @@ export const useSignUp = (
       toast.error(error.message ?? '회원가입에 실패했습니다.')
       options?.onError?.(error, _variables, _context, mutation)
     },
+    ...options,
   })
 }

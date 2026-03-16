@@ -13,7 +13,7 @@ import type {
 
 const BASE = '/api/todos'
 
-export async function get_todo_list_by_date(date: string): Promise<TodoItemInterface[]> {
+export async function getTodoListByDate(date: string): Promise<TodoItemInterface[]> {
   const res = await API.get<TodoListResponseInterface>(BASE, {
     params: { date },
   })
@@ -25,7 +25,7 @@ export async function get_todo_list_by_date(date: string): Promise<TodoItemInter
   return res.data
 }
 
-export async function get_todo_list_by_status(status: TodoStatus): Promise<TodoItemInterface[]> {
+export async function getTodoListByStatus(status: TodoStatus): Promise<TodoItemInterface[]> {
   const res = await API.get<TodoListResponseInterface>(`${BASE}/status`, {
     params: { status },
   })
@@ -37,7 +37,7 @@ export async function get_todo_list_by_status(status: TodoStatus): Promise<TodoI
   return res.data
 }
 
-export async function create_todo(body: TodoCreateBodyInterface): Promise<TodoItemInterface> {
+export async function createTodo(body: TodoCreateBodyInterface): Promise<TodoItemInterface> {
   const res = await API.post<TodoCreateResponseInterface, TodoCreateBodyInterface>(BASE, body)
 
   if (res.status !== 200 || !res.data) {
@@ -47,7 +47,7 @@ export async function create_todo(body: TodoCreateBodyInterface): Promise<TodoIt
   return res.data
 }
 
-export async function update_todo(
+export async function updateTodo(
   id: number,
   body: TodoUpdateBodyInterface,
 ): Promise<TodoItemInterface> {
@@ -63,7 +63,7 @@ export async function update_todo(
   return res.data
 }
 
-export async function update_todo_status(
+export async function updateTodoStatus(
   id: number,
   body: TodoStatusUpdateBodyInterface,
 ): Promise<TodoItemInterface> {

@@ -5,16 +5,13 @@ import { CheckCircle2Icon, CircleIcon } from 'lucide-react'
 interface TodayTodoSectionPropsInterface {
   todos: TodoItemInterface[]
   is_pending: boolean
-  /** 사용자가 완료 처리한 Todo ID 목록 (또는 Todo.status를 그대로 사용할 수도 있음) */
-  completed_todo_ids: number[]
-  /** Todo 완료 토글 클릭 시 호출되는 콜백 */
-  on_toggle_completed: (id: number) => void
+  /** Todo 완료 토글 클릭 시 호출되는 콜백 (서버 반영 포함) */
+  on_toggle_completed: (todo: TodoItemInterface) => void
 }
 
 const TodayTodoSection = ({
   todos,
   is_pending,
-  completed_todo_ids,
   on_toggle_completed,
 }: TodayTodoSectionPropsInterface) => {
   const todos_by_agent = todos.reduce<Record<number, TodoItemInterface[]>>((acc, todo) => {
@@ -49,9 +46,9 @@ const TodayTodoSection = ({
                         variant="ghost"
                         size="icon-sm"
                         aria-label="Todo 완료 토글"
-                        onClick={() => on_toggle_completed(todo.id)}
+                        onClick={() => on_toggle_completed(todo)}
                       >
-                        {completed_todo_ids.includes(todo.id) ? (
+                        {todo.status === 'DONE' ? (
                           <CheckCircle2Icon className="size-4 text-primary" />
                         ) : (
                           <CircleIcon className="size-4 text-muted-foreground" />
@@ -60,7 +57,7 @@ const TodayTodoSection = ({
                       <div className="flex-1 truncate">
                         <p
                           className={`text-xs font-medium ${
-                            completed_todo_ids.includes(todo.id)
+                            todo.status === 'DONE'
                               ? 'text-muted-foreground line-through'
                               : 'text-foreground'
                           }`}

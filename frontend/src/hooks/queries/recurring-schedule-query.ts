@@ -1,8 +1,8 @@
 import {
-  create_recurring_schedule,
-  delete_recurring_schedule,
-  get_recurring_schedule_list,
-  update_recurring_schedule,
+  createRecurringSchedule,
+  deleteRecurringSchedule,
+  getRecurringScheduleList,
+  updateRecurringSchedule,
 } from '@/services/recurring-schedule-service'
 import type {
   RecurringScheduleCreateBodyInterface,
@@ -10,13 +10,13 @@ import type {
   RecurringScheduleUpdateBodyInterface,
 } from '@/types/recurring-schedule.type'
 import {
-  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
   type UseMutationOptions,
   type UseQueryOptions,
 } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import { toast } from 'sonner'
 
 export const recurring_schedule_query_keys = {
@@ -24,20 +24,22 @@ export const recurring_schedule_query_keys = {
   list: () => [...recurring_schedule_query_keys.all, 'list'] as const,
 }
 
-export const recurring_schedule_list_query_options = queryOptions({
-  queryKey: recurring_schedule_query_keys.list(),
-  queryFn: get_recurring_schedule_list,
-})
-
+// 정기 일정 목록 조회 훅
 export const useRecurringScheduleList = (
-  options?: Omit<UseQueryOptions<RecurringScheduleDataInterface[], Error>, 'queryKey' | 'queryFn'>,
+  options?: UseQueryOptions<RecurringScheduleDataInterface[], Error>,
 ) => {
   return useQuery({
-    ...recurring_schedule_list_query_options,
+    queryKey: recurring_schedule_query_keys.list(),
+    queryFn: async () => {
+      const res = await getRecurringScheduleList()
+      return res
+    },
+    select: useCallback((data: RecurringScheduleDataInterface[]) => data, []),
     ...options,
   })
 }
 
+// 정기 일정 생성 훅
 export const useCreateRecurringSchedule = (
   options?: UseMutationOptions<
     RecurringScheduleDataInterface,
@@ -47,20 +49,19 @@ export const useCreateRecurringSchedule = (
 ) => {
   const query_client = useQueryClient()
   return useMutation({
-    ...options,
-    mutationFn: create_recurring_schedule,
-    onSuccess: (data, variables, context, mutation) => {
+    mutationFn: createRecurringSchedule,
+    onSuccess: () => {
       query_client.invalidateQueries({ queryKey: recurring_schedule_query_keys.all })
       toast.success('정기 일정이 등록되었습니다.')
-      options?.onSuccess?.(data, variables, context, mutation)
     },
-    onError: (error, variables, context) => {
+    onError: (error) => {
       toast.error(error.message ?? '정기 일정을 등록하지 못했습니다.')
-      options?.onError?.(error, variables, context)
     },
+    ...options,
   })
 }
 
+// 정기 일정 수정 훅
 export const useUpdateRecurringSchedule = (
   options?: UseMutationOptions<
     RecurringScheduleDataInterface,
@@ -70,33 +71,30 @@ export const useUpdateRecurringSchedule = (
 ) => {
   const query_client = useQueryClient()
   return useMutation({
-    ...options,
-    mutationFn: ({ id, body }) => update_recurring_schedule(id, body),
-    onSuccess: (data, variables, context, mutation) => {
+    mutationFn: ({ id, body }) => updateRecurringSchedule(id, body),
+    onSuccess: () => {
       query_client.invalidateQueries({ queryKey: recurring_schedule_query_keys.all })
       toast.success('정기 일정이 수정되었습니다.')
-      options?.onSuccess?.(data, variables, context, mutation)
     },
-    onError: (error, variables, context) => {
+    onError: (error) => {
       toast.error(error.message ?? '정기 일정을 수정하지 못했습니다.')
-      options?.onError?.(error, variables, context)
     },
+    ...options,
   })
 }
 
+// 정기 일정 삭제 훅
 export const useDeleteRecurringSchedule = (options?: UseMutationOptions<void, Error, number>) => {
   const query_client = useQueryClient()
   return useMutation({
-    ...options,
-    mutationFn: delete_recurring_schedule,
-    onSuccess: (data, variables, context, mutation) => {
+    mutationFn: deleteRecurringSchedule,
+    onSuccess: () => {
       query_client.invalidateQueries({ queryKey: recurring_schedule_query_keys.all })
       toast.success('정기 일정이 삭제되었습니다.')
-      options?.onSuccess?.(data, variables, context, mutation)
     },
-    onError: (error, variables, context) => {
+    onError: (error) => {
       toast.error(error.message ?? '정기 일정을 삭제하지 못했습니다.')
-      options?.onError?.(error, variables, context)
     },
+    ...options,
   })
 }

@@ -8,7 +8,7 @@ import type {
 
 const BASE = '/api/calendar/recurring-schedules'
 
-export async function get_recurring_schedule_list(): Promise<RecurringScheduleDataInterface[]> {
+export async function getRecurringScheduleList(): Promise<RecurringScheduleDataInterface[]> {
   const res = await API.get<RecurringScheduleListResponseInterface>(BASE)
 
   if (res.status !== 200 || !res.data) {
@@ -18,7 +18,7 @@ export async function get_recurring_schedule_list(): Promise<RecurringScheduleDa
   return res.data
 }
 
-export async function create_recurring_schedule(
+export async function createRecurringSchedule(
   body: RecurringScheduleCreateBodyInterface,
 ): Promise<RecurringScheduleDataInterface> {
   const res = await API.post<
@@ -37,7 +37,7 @@ export async function create_recurring_schedule(
   return res.data
 }
 
-export async function update_recurring_schedule(
+export async function updateRecurringSchedule(
   id: number,
   body: RecurringScheduleUpdateBodyInterface,
 ): Promise<RecurringScheduleDataInterface> {
@@ -57,7 +57,7 @@ export async function update_recurring_schedule(
   return res.data
 }
 
-export async function delete_recurring_schedule(id: number): Promise<void> {
+export async function deleteRecurringSchedule(id: number): Promise<void> {
   const res = await API.delete<{
     status: number
     message: string

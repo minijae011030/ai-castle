@@ -10,7 +10,7 @@ import type {
 
 const BASE = '/api/agents'
 
-export async function get_agent_role_list(): Promise<AgentRoleDataInterface[]> {
+export async function getAgentRoleList(): Promise<AgentRoleDataInterface[]> {
   const res = await API.get<AgentRoleListResponseInterface>(BASE)
 
   if (res.status !== 200 || !res.data) {
@@ -20,7 +20,7 @@ export async function get_agent_role_list(): Promise<AgentRoleDataInterface[]> {
   return res.data
 }
 
-export async function create_agent_role(
+export async function createAgentRole(
   body: AgentRoleCreateBodyInterface,
 ): Promise<AgentRoleDataInterface> {
   const res = await API.post<AgentRoleCreateResponseInterface, AgentRoleCreateBodyInterface>(
@@ -35,7 +35,7 @@ export async function create_agent_role(
   return res.data
 }
 
-export async function update_agent_role(
+export async function updateAgentRole(
   id: number,
   body: AgentRoleUpdateBodyInterface,
 ): Promise<AgentRoleDataInterface> {

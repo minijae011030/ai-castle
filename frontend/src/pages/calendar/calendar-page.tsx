@@ -21,9 +21,9 @@ import {
   useCreateRecurringSchedule,
   useRecurringScheduleList,
 } from '@/hooks/queries/recurring-schedule-query'
-import { useCreateTodo, useTodoListByDate } from '@/hooks/queries/todo-query'
+import { useCreateTodo, useTodoListByDate, useUpdateTodoStatus } from '@/hooks/queries/todo-query'
 import type { CalendarEventInterface } from '@/types/calendar.type'
-import type { TodoCreateBodyInterface } from '@/types/todo.type'
+import type { TodoCreateBodyInterface, TodoItemInterface, TodoStatus } from '@/types/todo.type'
 import { endOfDay, format, isWithinInterval, parseISO, startOfDay } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { useCallback, useMemo, useState } from 'react'
@@ -77,12 +77,12 @@ const CalendarPage = () => {
   const delete_mutation = useDeleteCalendarEvent()
   const create_recurring_mutation = useCreateRecurringSchedule()
   const create_todo_mutation = useCreateTodo()
+  const update_todo_status_mutation = useUpdateTodoStatus()
 
   const [selected_date, set_selected_date] = useState<Date>(() => new Date())
-  // 사용자가 완료 처리한 일정/정기일정/할 일 ID 목록 (프론트 로컬 상태)
+  // 사용자가 완료 처리한 일정/정기일정 ID 목록 (프론트 로컬 상태)
   const [completed_event_ids, set_completed_event_ids] = useState<number[]>([])
   const [completed_recurring_ids, set_completed_recurring_ids] = useState<number[]>([])
-  const [completed_todo_ids, set_completed_todo_ids] = useState<number[]>([])
 
   // 일정(단일 이벤트) 수정/추가 다이얼로그 (기존)
   const [event_dialog_open, set_event_dialog_open] = useState(false)
@@ -304,14 +304,13 @@ const CalendarPage = () => {
         <TodayTodoSection
           todos={todos}
           is_pending={isTodoPending}
-          completed_todo_ids={completed_todo_ids}
-          on_toggle_completed={(id) => {
-            // Todo 완료 토글
-            set_completed_todo_ids((prev_ids) =>
-              prev_ids.includes(id)
-                ? prev_ids.filter((todo_id) => todo_id !== id)
-                : [...prev_ids, id],
-            )
+          on_toggle_completed={(todo: TodoItemInterface) => {
+            // Todo 상태를 서버에 반영 (DONE <-> PENDING 토글)
+            const next_status: TodoStatus = todo.status === 'DONE' ? 'PENDING' : 'DONE'
+            update_todo_status_mutation.mutate({
+              id: todo.id,
+              body: { status: next_status },
+            })
           }}
         />
         {!isPending &&
