@@ -14,11 +14,12 @@ import { cn } from '@/lib/utils'
 import {
   useCreateRecurringSchedule,
   useDeleteRecurringSchedule,
-  useRecurringScheduleList,
   useUpdateRecurringSchedule,
 } from '@/hooks/queries/recurring-schedule-query'
 import type { RecurringScheduleDataInterface } from '@/types/recurring-schedule.type'
 import { useState } from 'react'
+import { format } from 'date-fns'
+import { PencilIcon, Trash2Icon } from 'lucide-react'
 
 type WeekdayValue = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
@@ -69,8 +70,17 @@ const parse_backend_weekdays = (weekdays: string): WeekdayValue[] => {
     .filter((v): v is WeekdayValue => !!v)
 }
 
-const RecurringScheduleSection = () => {
-  const { data: items = [], isPending } = useRecurringScheduleList()
+interface RecurringScheduleSectionPropsInterface {
+  selected_date: Date
+  recurring_schedules: RecurringScheduleDataInterface[]
+  is_pending: boolean
+}
+
+const RecurringScheduleSection = ({
+  selected_date,
+  recurring_schedules,
+  is_pending,
+}: RecurringScheduleSectionPropsInterface) => {
   const create_mutation = useCreateRecurringSchedule()
   const update_mutation = useUpdateRecurringSchedule()
   const delete_mutation = useDeleteRecurringSchedule()
@@ -83,22 +93,6 @@ const RecurringScheduleSection = () => {
   const [start_time, set_start_time] = useState('')
   const [end_time, set_end_time] = useState('')
   const [memo, set_memo] = useState('')
-
-  const reset_form = () => {
-    set_editing_item(null)
-    set_title('')
-    set_start_date('')
-    set_end_date('')
-    set_weekdays([])
-    set_start_time('')
-    set_end_time('')
-    set_memo('')
-  }
-
-  const handle_open = () => {
-    reset_form()
-    set_dialog_open(true)
-  }
 
   const handle_close = () => {
     set_dialog_open(false)
@@ -163,69 +157,76 @@ const RecurringScheduleSection = () => {
     await delete_mutation.mutateAsync(id)
   }
 
+  // 선택된 날짜 기준으로 실제 해당되는 정기 일정만 필터링
+  const selected_date_str = format(selected_date, 'yyyy-MM-dd')
+  const weekday_by_index: string[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+  const selected_weekday_code = weekday_by_index[selected_date.getDay()]
+
+  const items_for_selected = recurring_schedules.filter((item) => {
+    const in_period = item.periodStart <= selected_date_str && selected_date_str <= item.periodEnd
+    if (!in_period) return false
+
+    if (!selected_weekday_code) return false
+
+    const weekday_tokens = item.weekdays
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    return weekday_tokens.includes(selected_weekday_code)
+  })
+
+  if (is_pending || items_for_selected.length === 0) {
+    return null
+  }
+
   return (
     <div className="min-w-0 flex-1 space-y-2">
-      <div className="flex items-center justify-end gap-2">
-        <Button size="sm" variant="outline" onClick={handle_open}>
-          + 정기 일정 추가
-        </Button>
-      </div>
-
-      {isPending ? (
-        <p className="py-4 text-center text-xs text-muted-foreground">
-          정기 일정을 불러오는 중입니다...
-        </p>
-      ) : items.length === 0 ? (
-        <p className="py-4 text-center text-xs text-muted-foreground">
-          등록된 정기 일정이 없습니다. 상단 버튼으로 새 정기 일정을 추가해 보세요.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {items.map((item: RecurringScheduleDataInterface) => (
-            <Card key={item.id} size="sm">
-              <CardHeader className="flex items-start justify-between gap-2 pb-2">
-                <p className="text-sm font-medium">{item.title}</p>
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="정기 일정 수정"
-                    onClick={() => handle_edit_open(item)}
-                  >
-                    ✎
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="정기 일정 삭제"
-                    onClick={() => handle_delete(item.id)}
-                    disabled={delete_mutation.isPending}
-                  >
-                    🗑
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-1 text-xs text-muted-foreground">
-                <p>
-                  <span className="font-medium text-foreground">기간</span> {item.periodStart} ~{' '}
-                  {item.periodEnd}
-                </p>
-                <p>
-                  <span className="font-medium text-foreground">요일</span>{' '}
-                  {format_weekdays(parse_backend_weekdays(item.weekdays))}
-                </p>
-                <p>
-                  <span className="font-medium text-foreground">시간</span>{' '}
-                  {item.startTime.slice(0, 5)} ~ {item.endTime.slice(0, 5)}
-                </p>
-                {item.memo && <p className="line-clamp-2">{item.memo}</p>}
-              </CardContent>
-            </Card>
-          ))}
-        </ul>
-      )}
+      <ul className="flex flex-col gap-2">
+        {items_for_selected.map((item: RecurringScheduleDataInterface) => (
+          <Card key={item.id} size="sm">
+            <CardHeader className="flex items-start justify-between gap-2 pb-2">
+              <p className="text-sm font-medium">{item.title}</p>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="정기 일정 수정"
+                  onClick={() => handle_edit_open(item)}
+                >
+                  <PencilIcon className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="정기 일정 삭제"
+                  onClick={() => handle_delete(item.id)}
+                  disabled={delete_mutation.isPending}
+                >
+                  <Trash2Icon className="size-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-1 text-xs text-muted-foreground">
+              <p>
+                <span className="font-medium text-foreground">기간</span> {item.periodStart} ~{' '}
+                {item.periodEnd}
+              </p>
+              <p>
+                <span className="font-medium text-foreground">요일</span>{' '}
+                {format_weekdays(parse_backend_weekdays(item.weekdays))}
+              </p>
+              <p>
+                <span className="font-medium text-foreground">시간</span>{' '}
+                {item.startTime.slice(0, 5)} ~ {item.endTime.slice(0, 5)}
+              </p>
+              {item.memo && <p className="line-clamp-2">{item.memo}</p>}
+            </CardContent>
+          </Card>
+        ))}
+      </ul>
 
       <Dialog open={dialog_open} onOpenChange={(open) => !open && handle_close()}>
         <DialogContent className="sm:max-w-md">

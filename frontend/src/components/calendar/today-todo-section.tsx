@@ -2,9 +2,10 @@ import type { TodoItemInterface } from '@/types/todo.type'
 
 interface TodayTodoSectionPropsInterface {
   todos: TodoItemInterface[]
+  is_pending: boolean
 }
 
-const TodayTodoSection = ({ todos }: TodayTodoSectionPropsInterface) => {
+const TodayTodoSection = ({ todos, is_pending }: TodayTodoSectionPropsInterface) => {
   const todos_by_agent = todos.reduce<Record<number, TodoItemInterface[]>>((acc, todo) => {
     const agent_id = todo.agent.id
     if (!acc[agent_id]) acc[agent_id] = []
@@ -14,8 +15,8 @@ const TodayTodoSection = ({ todos }: TodayTodoSectionPropsInterface) => {
 
   const agent_ids = Object.keys(todos_by_agent).map((id) => Number(id))
 
-  if (agent_ids.length === 0) {
-    // 해당 날짜에 할 일이 없으면 아무것도 렌더링하지 않음
+  if (is_pending || agent_ids.length === 0) {
+    // 로딩 중이거나 할 일이 없으면 아무것도 렌더링하지 않음
     return null
   }
 

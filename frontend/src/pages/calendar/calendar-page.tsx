@@ -65,7 +65,8 @@ const default_form = {
 
 const CalendarPage = () => {
   const { data: events = [], isPending } = useCalendarEventList()
-  const { data: recurring_schedules = [] } = useRecurringScheduleList()
+  const { data: recurring_schedules = [], isPending: isRecurringPending } =
+    useRecurringScheduleList()
   const create_mutation = useCreateCalendarEvent()
   const update_mutation = useUpdateCalendarEvent()
   const delete_mutation = useDeleteCalendarEvent()
@@ -77,12 +78,33 @@ const CalendarPage = () => {
   const [delete_target_id, set_delete_target_id] = useState<number | null>(null)
 
   const selected_date_str = useMemo(() => format(selected_date, 'yyyy-MM-dd'), [selected_date])
-  const { data: todos = [] } = useTodoListByDate(selected_date_str)
+  const { data: todos = [], isPending: isTodoPending } = useTodoListByDate(selected_date_str)
 
   const events_on_selected = useMemo(
     () => events.filter((e) => isEventOnDate(e, selected_date)),
     [events, selected_date],
   )
+
+  // 선택된 날짜에 실제로 해당되는 정기 일정만 필터링 (우측 컬럼용 존재 여부 체크)
+  const recurring_on_selected = useMemo(() => {
+    const selected_weekday_index = selected_date.getDay()
+    const weekday_by_index: string[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+    const selected_weekday_code = weekday_by_index[selected_weekday_index]
+
+    return recurring_schedules.filter((item) => {
+      const in_period = item.periodStart <= selected_date_str && selected_date_str <= item.periodEnd
+      if (!in_period) return false
+
+      if (!selected_weekday_code) return false
+
+      const weekday_tokens = item.weekdays
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+
+      return weekday_tokens.includes(selected_weekday_code)
+    })
+  }, [recurring_schedules, selected_date, selected_date_str])
 
   const close_dialog = useCallback(() => {
     set_dialog_open(false)
@@ -163,21 +185,14 @@ const CalendarPage = () => {
         <h2 className="font-semibold">
           {format(selected_date, 'yyyy년 M월 d일 (EEE)', { locale: ko })}
         </h2>
-        <RecurringScheduleSection />
-        <CalendarEventListSection
+        <RecurringScheduleSection
           selected_date={selected_date}
+          recurring_schedules={recurring_schedules}
+          is_pending={isRecurringPending}
+        />
+        <CalendarEventListSection
           events_on_selected={events_on_selected}
           is_pending={isPending}
-          on_click_create={() => {
-            const base = format(selected_date, 'yyyy-MM-dd')
-            set_editing_event(null)
-            set_form({
-              ...default_form,
-              startAt: `${base}T09:00`,
-              endAt: `${base}T10:00`,
-            })
-            set_dialog_open(true)
-          }}
           on_click_edit={(event) => {
             set_editing_event(event)
             set_form({
@@ -190,7 +205,17 @@ const CalendarPage = () => {
           }}
           on_click_delete={(id) => set_delete_target_id(id)}
         />
-        <TodayTodoSection todos={todos} />
+        <TodayTodoSection todos={todos} is_pending={isTodoPending} />
+        {!isPending &&
+          !isRecurringPending &&
+          !isTodoPending &&
+          events_on_selected.length === 0 &&
+          recurring_on_selected.length === 0 &&
+          todos.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              해당 날짜에는 정기 일정, 일정, 할 일이 없습니다.
+            </p>
+          )}
       </div>
 
       {/* 추가/수정 다이얼로그 */}

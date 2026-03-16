@@ -23,7 +23,29 @@ const TodaySummarySection = ({
 }: TodaySummarySectionPropsInterface) => {
   const date_label = format(selected_date, 'yyyy년 M월 d일 (EEE)', { locale: ko })
 
-  const recurring_for_today = recurring_schedules // TODO: 정기 일정에서 오늘에 해당하는 것만 필터링
+  // 선택된 날짜에 실제로 해당되는 정기 일정만 필터링
+  const selected_date_str = format(selected_date, 'yyyy-MM-dd')
+
+  // JS Date 요일(0=일요일) → 백엔드 요일 코드 매핑
+  const weekday_by_index: string[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+  const selected_weekday_code = weekday_by_index[selected_date.getDay()]
+
+  const recurring_for_today = recurring_schedules.filter((item) => {
+    // 기간 안에 포함되는지 확인
+    const in_period = item.periodStart <= selected_date_str && selected_date_str <= item.periodEnd
+
+    if (!in_period) return false
+
+    // 요일 문자열(예: "MON,WED,FRI")에 오늘 요일 코드가 포함돼 있는지 확인
+    if (!selected_weekday_code) return false
+
+    const weekday_tokens = item.weekdays
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    return weekday_tokens.includes(selected_weekday_code)
+  })
 
   const todos_by_agent = todos.reduce<Record<number, TodoItemInterface[]>>((acc, todo) => {
     const agent_id = todo.agent.id
