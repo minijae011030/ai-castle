@@ -43,26 +43,36 @@ instance.interceptors.response.use(
 
     // accessToken 만료 등으로 인한 401 처리
     if (status === 401 && !original_request._retry) {
-      original_request._retry = true
+      const request_url = original_request.url ?? ''
+      const is_refresh_request =
+        typeof request_url === 'string' && request_url.includes('/api/auth/refresh')
 
-      // 동시에 여러 요청이 401이 나는 경우, 리프레시 결과를 공유
-      if (is_refreshing) {
-        await new Promise<void>((resolve) => {
-          pending_requests.push(resolve)
-        })
-        // 리프레시 후 토큰이 갱신되었으므로, 원 요청 재시도
-        return instance.request(error.config!)
+      // 1) 리프레시 자체가 401이면, 더 이상 시도하지 않고 로그인 페이지로 보낸다.
+      if (is_refresh_request) {
+        clearAuth()
+        window.location.href = '/login'
+        return Promise.reject(error)
       }
 
-      is_refreshing = true
+      original_request._retry = true
+
+      type RefreshResponse = {
+        status: number
+        message: string
+        data: { accessToken: string } | null
+      }
+
       try {
-        // refresh 토큰으로 accessToken 재발급 시도
-        type RefreshResponse = {
-          status: number
-          message: string
-          data: { accessToken: string } | null
+        // 동시에 여러 요청이 401이 나는 경우, 리프레시 결과를 공유
+        if (is_refreshing) {
+          await new Promise<void>((resolve) => {
+            pending_requests.push(resolve)
+          })
+          // 리프레시 후 토큰이 갱신되었으므로, 원 요청 재시도
+          return instance.request(original_request)
         }
 
+        is_refreshing = true
         const refresh_res = await instance.post<RefreshResponse>('/api/auth/refresh')
 
         if (refresh_res.data.status !== 200 || !refresh_res.data.data?.accessToken) {
@@ -77,9 +87,9 @@ instance.interceptors.response.use(
         pending_requests = []
 
         // 원래 요청 재시도
-        return instance.request(error.config!)
+        return instance.request(original_request)
       } catch (refresh_error) {
-        // 리프레시 실패 시 전역 로그아웃
+        // 리프레시 실패 시에만 전역 로그아웃 + 로그인 페이지 이동
         clearAuth()
         window.location.href = '/login'
         return Promise.reject(refresh_error)
