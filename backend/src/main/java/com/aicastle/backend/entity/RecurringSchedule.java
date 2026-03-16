@@ -99,4 +99,32 @@ public class RecurringSchedule extends BaseTimeEntity {
   public String getMemo() {
     return memo;
   }
+
+  public void setTitle(String title) {
+    this.title = title;
+  }
+
+  public void setPeriodStart(LocalDate periodStart) {
+    this.periodStart = periodStart;
+  }
+
+  public void setPeriodEnd(LocalDate periodEnd) {
+    this.periodEnd = periodEnd;
+  }
+
+  public void setWeekdays(String weekdays) {
+    this.weekdays = weekdays;
+  }
+
+  public void setStartTime(LocalTime startTime) {
+    this.startTime = startTime;
+  }
+
+  public void setEndTime(LocalTime endTime) {
+    this.endTime = endTime;
+  }
+
+  public void setMemo(String memo) {
+    this.memo = memo;
+  }
 }

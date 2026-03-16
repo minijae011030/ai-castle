@@ -24,3 +24,13 @@ export interface RecurringScheduleCreateBodyInterface {
   endTime: string
   memo?: string
 }
+
+export interface RecurringScheduleUpdateBodyInterface {
+  title?: string
+  periodStart?: string
+  periodEnd?: string
+  weekdays?: string
+  startTime?: string
+  endTime?: string
+  memo?: string
+}

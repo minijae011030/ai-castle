@@ -46,14 +46,18 @@ public class AuthController {
 
   @PostMapping("/login")
   public ResponseEntity<ResultResponse<LoginResponse>> login(
-      @Valid @RequestBody LoginRequest request, HttpServletResponse response) {
+      @Valid @RequestBody LoginRequest request,
+      HttpServletRequest httpRequest,
+      HttpServletResponse response) {
     LoginTokens tokens = authService.login(request.email(), request.password());
+
+    boolean secure = refreshCookieSecure && httpRequest.isSecure();
 
     Cookie refreshCookie = new Cookie(REFRESH_TOKEN_COOKIE_NAME, tokens.refreshToken());
     refreshCookie.setHttpOnly(true);
     refreshCookie.setPath("/");
     refreshCookie.setMaxAge(REFRESH_COOKIE_MAX_AGE_SECONDS);
-    refreshCookie.setSecure(refreshCookieSecure);
+    refreshCookie.setSecure(secure);
     refreshCookie.setAttribute("SameSite", "Lax");
     response.addCookie(refreshCookie);
 
@@ -84,11 +88,13 @@ public class AuthController {
     try {
       LoginTokens tokens = authService.refreshTokens(refreshToken);
 
+      boolean secure = refreshCookieSecure && request.isSecure();
+
       Cookie newRefreshCookie = new Cookie(REFRESH_TOKEN_COOKIE_NAME, tokens.refreshToken());
       newRefreshCookie.setHttpOnly(true);
       newRefreshCookie.setPath("/");
       newRefreshCookie.setMaxAge(REFRESH_COOKIE_MAX_AGE_SECONDS);
-      newRefreshCookie.setSecure(refreshCookieSecure);
+      newRefreshCookie.setSecure(secure);
       newRefreshCookie.setAttribute("SameSite", "Lax");
       response.addCookie(newRefreshCookie);
 

@@ -3,6 +3,7 @@ import type {
   RecurringScheduleCreateBodyInterface,
   RecurringScheduleDataInterface,
   RecurringScheduleListResponseInterface,
+  RecurringScheduleUpdateBodyInterface,
 } from '@/types/recurring-schedule.type'
 
 const BASE = '/api/calendar/recurring-schedules'
@@ -34,4 +35,36 @@ export async function create_recurring_schedule(
   }
 
   return res.data
+}
+
+export async function update_recurring_schedule(
+  id: number,
+  body: RecurringScheduleUpdateBodyInterface,
+): Promise<RecurringScheduleDataInterface> {
+  const res = await API.patch<
+    {
+      status: number
+      message: string
+      data: RecurringScheduleDataInterface | null
+    },
+    RecurringScheduleUpdateBodyInterface
+  >(`${BASE}/${id}`, body)
+
+  if (res.status !== 200 || !res.data) {
+    throw new Error(res.message ?? '정기 일정을 수정하지 못했습니다.')
+  }
+
+  return res.data
+}
+
+export async function delete_recurring_schedule(id: number): Promise<void> {
+  const res = await API.delete<{
+    status: number
+    message: string
+    data: null
+  }>(`${BASE}/${id}`)
+
+  if (res.status !== 200) {
+    throw new Error(res.message ?? '정기 일정을 삭제하지 못했습니다.')
+  }
 }

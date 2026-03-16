@@ -13,7 +13,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import {
   useCreateRecurringSchedule,
+  useDeleteRecurringSchedule,
   useRecurringScheduleList,
+  useUpdateRecurringSchedule,
 } from '@/hooks/queries/recurring-schedule-query'
 import type { RecurringScheduleDataInterface } from '@/types/recurring-schedule.type'
 import { useState } from 'react'
@@ -70,7 +72,10 @@ const parse_backend_weekdays = (weekdays: string): WeekdayValue[] => {
 const RecurringScheduleSection = () => {
   const { data: items = [], isPending } = useRecurringScheduleList()
   const create_mutation = useCreateRecurringSchedule()
+  const update_mutation = useUpdateRecurringSchedule()
+  const delete_mutation = useDeleteRecurringSchedule()
   const [dialog_open, set_dialog_open] = useState(false)
+  const [editing_item, set_editing_item] = useState<RecurringScheduleDataInterface | null>(null)
   const [title, set_title] = useState('')
   const [start_date, set_start_date] = useState('')
   const [end_date, set_end_date] = useState('')
@@ -80,6 +85,7 @@ const RecurringScheduleSection = () => {
   const [memo, set_memo] = useState('')
 
   const reset_form = () => {
+    set_editing_item(null)
     set_title('')
     set_start_date('')
     set_end_date('')
@@ -96,6 +102,18 @@ const RecurringScheduleSection = () => {
 
   const handle_close = () => {
     set_dialog_open(false)
+  }
+
+  const handle_edit_open = (item: RecurringScheduleDataInterface) => {
+    set_editing_item(item)
+    set_title(item.title)
+    set_start_date(item.periodStart)
+    set_end_date(item.periodEnd)
+    set_weekdays(parse_backend_weekdays(item.weekdays))
+    set_start_time(item.startTime.slice(0, 5))
+    set_end_time(item.endTime.slice(0, 5))
+    set_memo(item.memo ?? '')
+    set_dialog_open(true)
   }
 
   const toggle_weekday = (value: WeekdayValue) => {
@@ -116,7 +134,7 @@ const RecurringScheduleSection = () => {
 
   const handle_submit = async () => {
     if (!is_valid) return
-    await create_mutation.mutateAsync({
+    const payload = {
       title: title.trim(),
       periodStart: start_date,
       periodEnd: end_date,
@@ -124,8 +142,25 @@ const RecurringScheduleSection = () => {
       startTime: start_time,
       endTime: end_time,
       memo: memo.trim() || undefined,
-    })
+    }
+
+    if (editing_item) {
+      await update_mutation.mutateAsync({
+        id: editing_item.id,
+        body: payload,
+      })
+    } else {
+      await create_mutation.mutateAsync(payload)
+    }
     handle_close()
+  }
+
+  const handle_delete = async (id: number) => {
+    const confirmed = window.confirm(
+      '이 정기 일정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
+    )
+    if (!confirmed) return
+    await delete_mutation.mutateAsync(id)
   }
 
   return (
@@ -149,8 +184,29 @@ const RecurringScheduleSection = () => {
         <ul className="flex flex-col gap-2">
           {items.map((item: RecurringScheduleDataInterface) => (
             <Card key={item.id} size="sm">
-              <CardHeader className="pb-2">
+              <CardHeader className="flex items-start justify-between gap-2 pb-2">
                 <p className="text-sm font-medium">{item.title}</p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="정기 일정 수정"
+                    onClick={() => handle_edit_open(item)}
+                  >
+                    ✎
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="정기 일정 삭제"
+                    onClick={() => handle_delete(item.id)}
+                    disabled={delete_mutation.isPending}
+                  >
+                    🗑
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-1 text-xs text-muted-foreground">
                 <p>
@@ -175,7 +231,7 @@ const RecurringScheduleSection = () => {
       <Dialog open={dialog_open} onOpenChange={(open) => !open && handle_close()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>정기 일정 추가</DialogTitle>
+            <DialogTitle>{editing_item ? '정기 일정 수정' : '정기 일정 추가'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">

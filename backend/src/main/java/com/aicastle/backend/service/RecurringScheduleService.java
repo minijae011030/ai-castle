@@ -2,6 +2,7 @@ package com.aicastle.backend.service;
 
 import com.aicastle.backend.dto.RecurringScheduleCreateRequest;
 import com.aicastle.backend.dto.RecurringScheduleResponse;
+import com.aicastle.backend.dto.RecurringScheduleUpdateRequest;
 import com.aicastle.backend.entity.RecurringSchedule;
 import com.aicastle.backend.entity.UserAccount;
 import com.aicastle.backend.repository.RecurringScheduleRepository;
@@ -67,6 +68,46 @@ public class RecurringScheduleService {
             startTime,
             endTime,
             request.memo() != null ? request.memo() : "");
+
+    schedule = recurringScheduleRepository.save(schedule);
+    return toResponse(schedule);
+  }
+
+  @Transactional
+  public RecurringScheduleResponse update(
+      Long id, Long userId, RecurringScheduleUpdateRequest request) {
+    RecurringSchedule schedule =
+        recurringScheduleRepository
+            .findByIdAndUserAccount_Id(id, userId)
+            .orElseThrow(() -> new IllegalArgumentException("정기 일정을 찾을 수 없습니다."));
+
+    LocalDate start =
+        request.periodStart() != null ? request.periodStart() : schedule.getPeriodStart();
+    LocalDate end = request.periodEnd() != null ? request.periodEnd() : schedule.getPeriodEnd();
+    if (end.isBefore(start)) {
+      throw new IllegalArgumentException("반복 종료일은 시작일 이후여야 합니다.");
+    }
+
+    LocalTime startTime =
+        request.startTime() != null ? request.startTime() : schedule.getStartTime();
+    LocalTime endTime = request.endTime() != null ? request.endTime() : schedule.getEndTime();
+    if (!endTime.isAfter(startTime)) {
+      throw new IllegalArgumentException("종료 시간은 시작 시간 이후여야 합니다.");
+    }
+
+    if (request.title() != null && !request.title().isBlank()) {
+      schedule.setTitle(request.title());
+    }
+    schedule.setPeriodStart(start);
+    schedule.setPeriodEnd(end);
+    if (request.weekdays() != null && !request.weekdays().isBlank()) {
+      schedule.setWeekdays(request.weekdays());
+    }
+    schedule.setStartTime(startTime);
+    schedule.setEndTime(endTime);
+    if (request.memo() != null) {
+      schedule.setMemo(request.memo());
+    }
 
     schedule = recurringScheduleRepository.save(schedule);
     return toResponse(schedule);

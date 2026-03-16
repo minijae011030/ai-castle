@@ -1,10 +1,13 @@
 import {
   create_recurring_schedule,
+  delete_recurring_schedule,
   get_recurring_schedule_list,
+  update_recurring_schedule,
 } from '@/services/recurring-schedule-service'
 import type {
   RecurringScheduleCreateBodyInterface,
   RecurringScheduleDataInterface,
+  RecurringScheduleUpdateBodyInterface,
 } from '@/types/recurring-schedule.type'
 import {
   queryOptions,
@@ -53,6 +56,46 @@ export const useCreateRecurringSchedule = (
     },
     onError: (error, variables, context) => {
       toast.error(error.message ?? '정기 일정을 등록하지 못했습니다.')
+      options?.onError?.(error, variables, context)
+    },
+  })
+}
+
+export const useUpdateRecurringSchedule = (
+  options?: UseMutationOptions<
+    RecurringScheduleDataInterface,
+    Error,
+    { id: number; body: RecurringScheduleUpdateBodyInterface }
+  >,
+) => {
+  const query_client = useQueryClient()
+  return useMutation({
+    ...options,
+    mutationFn: ({ id, body }) => update_recurring_schedule(id, body),
+    onSuccess: (data, variables, context, mutation) => {
+      query_client.invalidateQueries({ queryKey: recurring_schedule_query_keys.all })
+      toast.success('정기 일정이 수정되었습니다.')
+      options?.onSuccess?.(data, variables, context, mutation)
+    },
+    onError: (error, variables, context) => {
+      toast.error(error.message ?? '정기 일정을 수정하지 못했습니다.')
+      options?.onError?.(error, variables, context)
+    },
+  })
+}
+
+export const useDeleteRecurringSchedule = (options?: UseMutationOptions<void, Error, number>) => {
+  const query_client = useQueryClient()
+  return useMutation({
+    ...options,
+    mutationFn: delete_recurring_schedule,
+    onSuccess: (data, variables, context, mutation) => {
+      query_client.invalidateQueries({ queryKey: recurring_schedule_query_keys.all })
+      toast.success('정기 일정이 삭제되었습니다.')
+      options?.onSuccess?.(data, variables, context, mutation)
+    },
+    onError: (error, variables, context) => {
+      toast.error(error.message ?? '정기 일정을 삭제하지 못했습니다.')
       options?.onError?.(error, variables, context)
     },
   })
