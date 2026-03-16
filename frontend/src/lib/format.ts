@@ -16,3 +16,9 @@ export function format_date_time(iso_string: string | null | undefined): string 
     return iso_string
   }
 }
+
+/** datetime-local 값 → API용 ISO 형식 (초 포함) */
+export function toApiDatetime(value: string): string {
+  if (!value) return ''
+  return value.length === 16 ? `${value}:00` : value
+}
