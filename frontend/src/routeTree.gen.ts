@@ -16,6 +16,7 @@ import { Route as ProtectedRouteImport } from './routes/_protected'
 import { Route as ProtectedIndexRouteImport } from './routes/_protected/index'
 import { Route as ProtectedSettingsRouteImport } from './routes/_protected/settings'
 import { Route as ProtectedCalendarRouteImport } from './routes/_protected/calendar'
+import { Route as ProtectedAgentsRouteImport } from './routes/_protected/agents'
 
 const TestRoute = TestRouteImport.update({
   id: '/test',
@@ -51,12 +52,18 @@ const ProtectedCalendarRoute = ProtectedCalendarRouteImport.update({
   path: '/calendar',
   getParentRoute: () => ProtectedRoute,
 } as any)
+const ProtectedAgentsRoute = ProtectedAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => ProtectedRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ProtectedIndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/test': typeof TestRoute
+  '/agents': typeof ProtectedAgentsRoute
   '/calendar': typeof ProtectedCalendarRoute
   '/settings': typeof ProtectedSettingsRoute
 }
@@ -64,6 +71,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/test': typeof TestRoute
+  '/agents': typeof ProtectedAgentsRoute
   '/calendar': typeof ProtectedCalendarRoute
   '/settings': typeof ProtectedSettingsRoute
   '/': typeof ProtectedIndexRoute
@@ -74,21 +82,37 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/test': typeof TestRoute
+  '/_protected/agents': typeof ProtectedAgentsRoute
   '/_protected/calendar': typeof ProtectedCalendarRoute
   '/_protected/settings': typeof ProtectedSettingsRoute
   '/_protected/': typeof ProtectedIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/signup' | '/test' | '/calendar' | '/settings'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/test'
+    | '/agents'
+    | '/calendar'
+    | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/signup' | '/test' | '/calendar' | '/settings' | '/'
+  to:
+    | '/login'
+    | '/signup'
+    | '/test'
+    | '/agents'
+    | '/calendar'
+    | '/settings'
+    | '/'
   id:
     | '__root__'
     | '/_protected'
     | '/login'
     | '/signup'
     | '/test'
+    | '/_protected/agents'
     | '/_protected/calendar'
     | '/_protected/settings'
     | '/_protected/'
@@ -152,16 +176,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedCalendarRouteImport
       parentRoute: typeof ProtectedRoute
     }
+    '/_protected/agents': {
+      id: '/_protected/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof ProtectedAgentsRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
   }
 }
 
 interface ProtectedRouteChildren {
+  ProtectedAgentsRoute: typeof ProtectedAgentsRoute
   ProtectedCalendarRoute: typeof ProtectedCalendarRoute
   ProtectedSettingsRoute: typeof ProtectedSettingsRoute
   ProtectedIndexRoute: typeof ProtectedIndexRoute
 }
 
 const ProtectedRouteChildren: ProtectedRouteChildren = {
+  ProtectedAgentsRoute: ProtectedAgentsRoute,
   ProtectedCalendarRoute: ProtectedCalendarRoute,
   ProtectedSettingsRoute: ProtectedSettingsRoute,
   ProtectedIndexRoute: ProtectedIndexRoute,
