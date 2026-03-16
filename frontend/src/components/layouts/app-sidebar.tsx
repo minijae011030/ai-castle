@@ -15,7 +15,7 @@ import {
 import { clearAuth } from '@/services/auth-service'
 import { useUserStore } from '@/stores/user.store'
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
-import { CalendarIcon, HomeIcon, LogOutIcon } from 'lucide-react'
+import { CalendarIcon, HomeIcon, LogOutIcon, SettingsIcon } from 'lucide-react'
 
 const AppSidebar = () => {
   const navigate = useNavigate()
@@ -53,6 +53,14 @@ const AppSidebar = () => {
                     <Link to="/calendar">
                       <CalendarIcon />
                       <span>캘린더</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={pathname.startsWith('/settings')}>
+                    <Link to="/settings">
+                      <SettingsIcon />
+                      <span>설정</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

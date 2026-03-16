@@ -25,6 +25,15 @@ public class UserAccount extends BaseTimeEntity {
   @Column(name = "day_end_time", nullable = false)
   private LocalTime dayEndTime;
 
+  @Column(name = "age")
+  private Integer age;
+
+  @Column(name = "interests", length = 1000)
+  private String interests;
+
+  @Column(name = "intensity", length = 16)
+  private String intensity = "medium";
+
   protected UserAccount() {}
 
   public UserAccount(
@@ -70,5 +79,29 @@ public class UserAccount extends BaseTimeEntity {
 
   public void setDayEndTime(LocalTime dayEndTime) {
     this.dayEndTime = dayEndTime;
+  }
+
+  public Integer getAge() {
+    return age;
+  }
+
+  public void setAge(Integer age) {
+    this.age = age;
+  }
+
+  public String getInterests() {
+    return interests;
+  }
+
+  public void setInterests(String interests) {
+    this.interests = interests;
+  }
+
+  public String getIntensity() {
+    return intensity;
+  }
+
+  public void setIntensity(String intensity) {
+    this.intensity = intensity;
   }
 }
