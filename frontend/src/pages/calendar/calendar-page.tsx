@@ -1,7 +1,12 @@
 import { ko } from 'date-fns/locale'
 import { useMemo, useState } from 'react'
 import { Calendar } from '@/components/ui/calendar'
-import { useSchedulesByDay, useSchedulesByMonth } from '@/hooks/queries/schedule-query'
+import {
+  useSchedulesByDay,
+  useSchedulesByMonth,
+  useToggleScheduleDone,
+  useToggleRecurringScheduleDone,
+} from '@/hooks/queries/schedule-query'
 import { format } from 'date-fns'
 import { CalendarDayCell } from '@/components/calendar/calendar-day-cell'
 import type { ScheduleOccurrenceInterface } from '@/types/schedule.type'
@@ -79,20 +84,60 @@ export const CalendarPage = () => {
 
   const schedulesByDateMap = useMemo(() => {
     const map: Record<string, ScheduleOccurrenceInterface[]> = {}
-    const all = [...(schedulesByMonth ?? []), ...schedulesFromTemplates]
-    for (const s of all) {
-      const key = s.occurrenceDate
-      if (!map[key]) map[key] = []
-      map[key].push(s)
+
+    const existingRecurringKeys = new Set(
+      (schedulesByMonth ?? [])
+        .filter(
+          (s) =>
+            s.type === 'RECURRING_OCCURRENCE' && s.recurringTemplateId !== null && s.occurrenceDate,
+        )
+        .map((s) => `${s.recurringTemplateId}-${s.occurrenceDate}`),
+    )
+
+    const all: ScheduleOccurrenceInterface[] = [...(schedulesByMonth ?? [])]
+
+    for (const s of schedulesFromTemplates) {
+      const key = `${s.recurringTemplateId}-${s.occurrenceDate}`
+      if (s.recurringTemplateId && !existingRecurringKeys.has(key)) {
+        all.push(s)
+      }
     }
+
+    for (const s of all) {
+      const dateKey = s.occurrenceDate
+      if (!map[dateKey]) map[dateKey] = []
+      map[dateKey].push(s)
+    }
+
     return map
   }, [schedulesByMonth, schedulesFromTemplates])
 
   const schedulesForSelectedDay = useMemo(() => {
     const fromApi = schedulesByDay ?? []
     const fromTemplates = templatesByDateMap[selectedDateStr] ?? []
-    return [...fromApi, ...fromTemplates].sort((a, b) => a.startAt.localeCompare(b.startAt))
+
+    const existingRecurringKeys = new Set(
+      fromApi
+        .filter(
+          (s) =>
+            s.type === 'RECURRING_OCCURRENCE' &&
+            s.recurringTemplateId !== null &&
+            s.occurrenceDate === selectedDateStr,
+        )
+        .map((s) => `${s.recurringTemplateId}-${s.occurrenceDate}`),
+    )
+
+    const filteredTemplates = fromTemplates.filter((s) => {
+      if (!s.recurringTemplateId) return true
+      const key = `${s.recurringTemplateId}-${s.occurrenceDate}`
+      return !existingRecurringKeys.has(key)
+    })
+
+    return [...fromApi, ...filteredTemplates].sort((a, b) => a.startAt.localeCompare(b.startAt))
   }, [schedulesByDay, selectedDateStr, templatesByDateMap])
+
+  const toggleScheduleDoneMutation = useToggleScheduleDone()
+  const toggleRecurringDoneMutation = useToggleRecurringScheduleDone()
 
   return (
     <div className="flex flex-col gap-4 p-4 md:flex-row md:items-start">
@@ -131,26 +176,62 @@ export const CalendarPage = () => {
             <p className="text-muted-foreground">이 날짜에는 스케줄이 없습니다.</p>
           )}
           {!isPending &&
-            schedulesForSelectedDay.map((s) => (
-              <div
-                key={`${s.type}-${s.recurringTemplateId ?? s.calendarEventId ?? s.todoId ?? s.id}`}
-                className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2"
-              >
-                <div className="min-w-0 space-y-0.5">
-                  <p className="truncate font-medium">{s.title}</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {format(new Date(s.startAt), 'HH:mm')} ~ {format(new Date(s.endAt), 'HH:mm')}
-                  </p>
-                </div>
-                <Badge variant="outline" className="text-[10px] uppercase">
-                  {s.type === 'RECURRING_OCCURRENCE'
-                    ? '정기'
-                    : s.type === 'CALENDAR_EVENT'
-                      ? '일정'
-                      : '할 일'}
-                </Badge>
-              </div>
-            ))}
+            schedulesForSelectedDay.map((s) => {
+              const isDone = s.done
+              const isRecurring =
+                s.type === 'RECURRING_OCCURRENCE' && s.recurringTemplateId !== null
+              return (
+                <button
+                  key={`${s.type}-${s.recurringTemplateId ?? s.calendarEventId ?? s.todoId ?? s.id}`}
+                  type="button"
+                  onClick={() => {
+                    if (isRecurring && s.recurringTemplateId) {
+                      toggleRecurringDoneMutation.mutate({
+                        templateId: s.recurringTemplateId,
+                        date: s.occurrenceDate,
+                      })
+                    } else {
+                      toggleScheduleDoneMutation.mutate({ id: s.id })
+                    }
+                  }}
+                  className="flex w-full items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-left hover:bg-accent/60"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={
+                        'inline-flex size-4 items-center justify-center rounded-full border text-[10px] ' +
+                        (isDone
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-background text-muted-foreground')
+                      }
+                    >
+                      {isDone ? '✓' : ''}
+                    </span>
+                    <div className="min-w-0 space-y-0.5">
+                      <p
+                        className={
+                          'truncate font-medium ' +
+                          (isDone ? 'text-muted-foreground line-through' : 'text-foreground')
+                        }
+                      >
+                        {s.title}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {format(new Date(s.startAt), 'HH:mm')} ~{' '}
+                        {format(new Date(s.endAt), 'HH:mm')}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
+                    {s.type === 'RECURRING_OCCURRENCE'
+                      ? '정기'
+                      : s.type === 'CALENDAR_EVENT'
+                        ? '일정'
+                        : '할 일'}
+                  </Badge>
+                </button>
+              )
+            })}
         </div>
       </div>
     </div>

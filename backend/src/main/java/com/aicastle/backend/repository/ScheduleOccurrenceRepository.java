@@ -1,8 +1,10 @@
 package com.aicastle.backend.repository;
 
 import com.aicastle.backend.entity.ScheduleOccurrence;
+import com.aicastle.backend.entity.ScheduleOccurrence.ScheduleType;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -21,4 +23,7 @@ public interface ScheduleOccurrenceRepository extends JpaRepository<ScheduleOccu
       """)
   List<ScheduleOccurrence> findByUserAndMonth(
       @Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
+
+  Optional<ScheduleOccurrence> findByUserAccount_IdAndTypeAndRecurringTemplateIdAndOccurrenceDate(
+      Long userAccountId, ScheduleType type, Long recurringTemplateId, LocalDate occurrenceDate);
 }

@@ -3,9 +3,11 @@ package com.aicastle.backend.service;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleCreateRequest;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleOccurrenceResponse;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleUpdateRequest;
+import com.aicastle.backend.entity.RecurringScheduleTemplate;
 import com.aicastle.backend.entity.ScheduleOccurrence;
 import com.aicastle.backend.entity.ScheduleOccurrence.ScheduleType;
 import com.aicastle.backend.entity.UserAccount;
+import com.aicastle.backend.repository.RecurringScheduleTemplateRepository;
 import com.aicastle.backend.repository.ScheduleOccurrenceRepository;
 import com.aicastle.backend.repository.UserAccountRepository;
 import java.time.LocalDate;
@@ -22,12 +24,15 @@ public class CalendarScheduleService {
 
   private final ScheduleOccurrenceRepository occurrenceRepository;
   private final UserAccountRepository userAccountRepository;
+  private final RecurringScheduleTemplateRepository recurringScheduleTemplateRepository;
 
   public CalendarScheduleService(
       ScheduleOccurrenceRepository occurrenceRepository,
-      UserAccountRepository userAccountRepository) {
+      UserAccountRepository userAccountRepository,
+      RecurringScheduleTemplateRepository recurringScheduleTemplateRepository) {
     this.occurrenceRepository = occurrenceRepository;
     this.userAccountRepository = userAccountRepository;
+    this.recurringScheduleTemplateRepository = recurringScheduleTemplateRepository;
   }
 
   @Transactional(readOnly = true)
@@ -60,6 +65,60 @@ public class CalendarScheduleService {
     occurrence.setDone(!occurrence.isDone());
     ScheduleOccurrence saved = occurrenceRepository.save(occurrence);
     return ScheduleOccurrenceResponse.fromEntity(saved);
+  }
+
+  @Transactional
+  public ScheduleOccurrenceResponse toggleRecurringTemplateOccurrence(
+      Long userId, Long templateId, LocalDate date) {
+    if (templateId == null || date == null) {
+      throw new IllegalArgumentException("templateId와 date는 필수입니다.");
+    }
+
+    // 기존에 생성된 occurrence 가 있으면 토글
+    return occurrenceRepository
+        .findByUserAccount_IdAndTypeAndRecurringTemplateIdAndOccurrenceDate(
+            userId, ScheduleType.RECURRING_OCCURRENCE, templateId, date)
+        .map(
+            existing -> {
+              existing.setDone(!existing.isDone());
+              ScheduleOccurrence saved = occurrenceRepository.save(existing);
+              return ScheduleOccurrenceResponse.fromEntity(saved);
+            })
+        // 없으면 템플릿 정보를 기반으로 새 occurrence 를 생성하면서 done=true 로 설정
+        .orElseGet(
+            () -> {
+              UserAccount user =
+                  userAccountRepository
+                      .findById(userId)
+                      .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+              RecurringScheduleTemplate template =
+                  recurringScheduleTemplateRepository
+                      .findById(templateId)
+                      .orElseThrow(() -> new IllegalArgumentException("정기 일정을 찾을 수 없습니다."));
+
+              if (!template.getUserAccount().getId().equals(userId)) {
+                throw new IllegalArgumentException("본인의 정기 일정만 변경할 수 있습니다.");
+              }
+
+              LocalDateTime startAt = LocalDateTime.of(date, template.getStartTime());
+              LocalDateTime endAt = LocalDateTime.of(date, template.getEndTime());
+
+              ScheduleOccurrence occurrence =
+                  new ScheduleOccurrence(
+                      user,
+                      ScheduleType.RECURRING_OCCURRENCE,
+                      template.getTitle(),
+                      template.getDescription(),
+                      date,
+                      startAt,
+                      endAt);
+              occurrence.setRecurringTemplateId(templateId);
+              occurrence.setDone(true);
+
+              ScheduleOccurrence saved = occurrenceRepository.save(occurrence);
+              return ScheduleOccurrenceResponse.fromEntity(saved);
+            });
   }
 
   @Transactional

@@ -85,6 +85,20 @@ public class CalendarScheduleController {
     return ResponseEntity.ok(ResultResponse.success("스케줄 완료 상태가 변경되었습니다.", data));
   }
 
+  /** 정기 일정 템플릿 기반 occurrence 완료/완료 취소 토글. */
+  public record RecurringToggleRequest(
+      Long templateId, @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {}
+
+  @PatchMapping("/recurring/toggle-done")
+  public ResponseEntity<ResultResponse<ScheduleOccurrenceResponse>> toggleRecurringDone(
+      @RequestBody RecurringToggleRequest request) {
+    Long userId = getUserId();
+    ScheduleOccurrenceResponse data =
+        calendarScheduleService.toggleRecurringTemplateOccurrence(
+            userId, request.templateId(), request.date());
+    return ResponseEntity.ok(ResultResponse.success("정기 일정 완료 상태가 변경되었습니다.", data));
+  }
+
   /** 단일 스케줄 삭제. */
   @DeleteMapping("/{id}")
   public ResponseEntity<ResultResponse<Void>> delete(@PathVariable Long id) {

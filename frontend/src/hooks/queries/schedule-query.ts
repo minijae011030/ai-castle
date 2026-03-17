@@ -3,6 +3,7 @@ import {
   deleteSchedule,
   getSchedulesByDay,
   getSchedulesByMonth,
+  toggleRecurringScheduleDone,
   toggleScheduleDone,
   updateSchedule,
 } from '@/services/schedule-service'
@@ -126,6 +127,31 @@ export const useToggleScheduleDone = (
     },
     onError: (error, variables, context, mutation) => {
       toast.error(error.message ?? '스케줄 완료 상태 변경에 실패했습니다.')
+      options?.onError?.(error, variables, context, mutation)
+    },
+    ...options,
+  })
+}
+
+// 정기 일정 템플릿 기반 완료 토글 훅
+export const useToggleRecurringScheduleDone = (
+  options?: UseMutationOptions<
+    ScheduleOccurrenceInterface,
+    Error,
+    { templateId: number; date: string }
+  >,
+) => {
+  const query_client = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ templateId, date }) => toggleRecurringScheduleDone(templateId, date),
+    onSuccess: (data, variables, context, mutation) => {
+      query_client.invalidateQueries({ queryKey: schedule_query_keys.all })
+      toast.success('정기 일정 완료 상태가 변경되었습니다.')
+      options?.onSuccess?.(data, variables, context, mutation)
+    },
+    onError: (error, variables, context, mutation) => {
+      toast.error(error.message ?? '정기 일정 완료 상태 변경에 실패했습니다.')
       options?.onError?.(error, variables, context, mutation)
     },
     ...options,

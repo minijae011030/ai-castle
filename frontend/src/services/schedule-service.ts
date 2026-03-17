@@ -75,6 +75,24 @@ export async function toggleScheduleDone(id: number): Promise<ScheduleOccurrence
   return res.data
 }
 
+// 정기 일정 템플릿 기반 occurrence 완료/완료 취소 토글
+export async function toggleRecurringScheduleDone(
+  templateId: number,
+  date: string,
+): Promise<ScheduleOccurrenceInterface> {
+  const res = await API.patch<ScheduleOccurrenceSingleResponseInterface>(
+    '/api/calendar/schedules/recurring/toggle-done',
+    {
+      templateId,
+      date,
+    },
+  )
+  if (res.status !== 200 || !res.data) {
+    throw new Error(res.message ?? '정기 일정 완료 상태 변경에 실패했습니다.')
+  }
+  return res.data
+}
+
 // 스케줄 삭제
 export async function deleteSchedule(id: number): Promise<void> {
   const res = await API.delete<{ status: number; message: string; data: null }>(
