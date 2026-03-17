@@ -2,8 +2,12 @@ package com.aicastle.backend.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDate;
+import lombok.Getter;
+import lombok.Setter;
 
 /** 서브에이전트가 제출하는 일일 리포트. Sliding Window(최근 N개)로 컨텍스트 관리. */
+@Getter
+@Setter
 @Entity
 @Table(
     name = "report",
@@ -33,26 +37,6 @@ public class Report extends BaseTimeEntity {
     this.userAccount = userAccount;
     this.agentRole = agentRole;
     this.reportDate = reportDate;
-    this.content = content;
-  }
-
-  public UserAccount getUserAccount() {
-    return userAccount;
-  }
-
-  public AgentRole getAgentRole() {
-    return agentRole;
-  }
-
-  public LocalDate getReportDate() {
-    return reportDate;
-  }
-
-  public String getContent() {
-    return content;
-  }
-
-  public void setContent(String content) {
     this.content = content;
   }
 }

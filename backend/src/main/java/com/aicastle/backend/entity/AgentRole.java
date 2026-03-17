@@ -1,8 +1,12 @@
 package com.aicastle.backend.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 
 /** 에이전트 역할. 동적 프롬프팅용 시스템 프롬프트 저장. */
+@Getter
+@Setter
 @Entity
 @Table(name = "agent_role")
 public class AgentRole extends BaseTimeEntity {
@@ -22,22 +26,6 @@ public class AgentRole extends BaseTimeEntity {
   public AgentRole(String name, AgentRoleType roleType, String systemPrompt) {
     this.name = name;
     this.roleType = roleType;
-    this.systemPrompt = systemPrompt;
-  }
-
-  public String getName() {
-    return name;
-  }
-
-  public AgentRoleType getRoleType() {
-    return roleType;
-  }
-
-  public String getSystemPrompt() {
-    return systemPrompt;
-  }
-
-  public void setSystemPrompt(String systemPrompt) {
     this.systemPrompt = systemPrompt;
   }
 }

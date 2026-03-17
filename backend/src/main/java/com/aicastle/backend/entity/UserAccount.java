@@ -2,8 +2,12 @@ package com.aicastle.backend.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalTime;
+import lombok.Getter;
+import lombok.Setter;
 
 /** 사용자(예서) 계정. biorhythm(day_start_time, day_end_time)으로 스케줄 배치 트리거. */
+@Getter
+@Setter
 @Entity
 @Table(name = "user_account")
 public class UserAccount extends BaseTimeEntity {
@@ -47,61 +51,5 @@ public class UserAccount extends BaseTimeEntity {
     this.passwordHash = passwordHash;
     this.dayStartTime = dayStartTime;
     this.dayEndTime = dayEndTime;
-  }
-
-  public String getEmail() {
-    return email;
-  }
-
-  public String getUserName() {
-    return userName;
-  }
-
-  public String getPasswordHash() {
-    return passwordHash;
-  }
-
-  public LocalTime getDayStartTime() {
-    return dayStartTime;
-  }
-
-  public LocalTime getDayEndTime() {
-    return dayEndTime;
-  }
-
-  public void setUserName(String userName) {
-    this.userName = userName;
-  }
-
-  public void setDayStartTime(LocalTime dayStartTime) {
-    this.dayStartTime = dayStartTime;
-  }
-
-  public void setDayEndTime(LocalTime dayEndTime) {
-    this.dayEndTime = dayEndTime;
-  }
-
-  public Integer getAge() {
-    return age;
-  }
-
-  public void setAge(Integer age) {
-    this.age = age;
-  }
-
-  public String getInterests() {
-    return interests;
-  }
-
-  public void setInterests(String interests) {
-    this.interests = interests;
-  }
-
-  public String getIntensity() {
-    return intensity;
-  }
-
-  public void setIntensity(String intensity) {
-    this.intensity = intensity;
   }
 }

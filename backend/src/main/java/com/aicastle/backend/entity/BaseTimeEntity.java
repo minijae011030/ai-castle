@@ -1,37 +1,40 @@
 package com.aicastle.backend.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.MappedSuperclass;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import java.time.LocalDateTime;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import lombok.Getter;
 
-/** 생성/수정 시간 자동 기록용 추상 엔티티. 모든 엔티티가 상속. */
+/**
+ * 공통 ID 및 생성/수정 시각을 가지는 베이스 엔티티.
+ *
+ * <p>모든 JPA 엔티티는 이 클래스를 상속하여 id/createdAt/updatedAt 을 공통으로 사용한다.
+ */
+@Getter
 @MappedSuperclass
-@EntityListeners(AuditingEntityListener.class)
 public abstract class BaseTimeEntity {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @CreatedDate
-  @Column(name = "created_at", nullable = false, updatable = false)
   private LocalDateTime createdAt;
 
-  @LastModifiedDate
-  @Column(name = "updated_at", nullable = false)
   private LocalDateTime updatedAt;
 
-  public Long getId() {
-    return id;
+  @PrePersist
+  protected void onCreate() {
+    LocalDateTime now = LocalDateTime.now();
+    this.createdAt = now;
+    this.updatedAt = now;
   }
 
-  public LocalDateTime getCreatedAt() {
-    return createdAt;
-  }
-
-  public LocalDateTime getUpdatedAt() {
-    return updatedAt;
+  @PreUpdate
+  protected void onUpdate() {
+    this.updatedAt = LocalDateTime.now();
   }
 }

@@ -16,16 +16,3 @@ export function format_date_time(iso_string: string | null | undefined): string 
     return iso_string
   }
 }
-
-/** datetime-local 값 → API용 ISO 형식 (초 포함) */
-export function toApiDatetime(value: string): string {
-  if (!value) return ''
-  return value.length === 16 ? `${value}:00` : value
-}
-
-/** 제목 잘라서 표시 (최대 max_len, 초과 시 "..") */
-export function truncateTitle(title: string, max_len: number): string {
-  const t = title.trim()
-  if (t.length <= max_len) return t
-  return t.slice(0, max_len - 1) + '..'
-}
