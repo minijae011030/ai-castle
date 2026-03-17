@@ -1,3 +1,4 @@
+import { truncateTitle } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { CalendarEventInterface } from '@/types/calendar.type'
 import type { RecurringScheduleDataInterface } from '@/types/recurring-schedule.type'
@@ -15,13 +16,6 @@ function isEventOnDate(event: CalendarEventInterface, date: Date): boolean {
     isWithinInterval(dayEnd, { start: eventStart, end: eventEnd }) ||
     isWithinInterval(eventStart, { start: dayStart, end: dayEnd })
   )
-}
-
-/** 제목 잘라서 표시 (최대 max_len, 초과 시 "..") */
-function truncateTitle(title: string, max_len: number): string {
-  const t = title.trim()
-  if (t.length <= max_len) return t
-  return t.slice(0, max_len - 1) + '..'
 }
 
 const MAX_EVENTS_IN_CELL = 2

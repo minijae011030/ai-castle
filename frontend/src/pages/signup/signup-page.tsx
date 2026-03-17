@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
-const SignUpPage = () => {
+export const SignUpPage = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -79,5 +79,3 @@ const SignUpPage = () => {
     </div>
   )
 }
-
-export { SignUpPage }

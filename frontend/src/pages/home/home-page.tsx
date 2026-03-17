@@ -5,7 +5,7 @@ import { clearAuth } from '@/services/auth-service'
 import { useUserStore } from '@/stores/user.store'
 import { useNavigate } from '@tanstack/react-router'
 
-const HomePage = () => {
+export const HomePage = () => {
   const navigate = useNavigate()
   const healthQuery = useHealth()
   const userInfo = useUserStore((s) => s.userInfo)
@@ -58,5 +58,3 @@ const HomePage = () => {
     </div>
   )
 }
-
-export { HomePage }

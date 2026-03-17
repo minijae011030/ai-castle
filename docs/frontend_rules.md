@@ -4,7 +4,7 @@
 
 ### 1.1. Variables & Functions
 
-- Variables: 반드시 snake_case를 사용합니다. (e.g., user_data, is_loading)
+- Variables: 반드시 camelCase를 사용하며, 소문자로 시작합니다. (e.g., userData, isLoading)
 - Functions: 반드시 camelCase를 사용하며, 소문자로 시작합니다. (e.g., handleClick, fetchUserInfo)
 - General Rule: 모든 이름은 의도가 명확하고 알아보기 쉽게 작성합니다.
 
@@ -25,10 +25,10 @@
 ```ts
 // Good
 const ExampleComponent = () => {
-  const hello_world = "Hello"; // 변수는 snake_case
-  const handlePrint = () => console.log(hello_world); // 함수는 camelCase
+  const helloWorld = "Hello"; // 변수는 snake_case
+  const handlePrint = () => console.log(helloWorld); // 함수는 camelCase
 
-  return <div onClick={handlePrint}>{hello_world}</div>;
+  return <div onClick={handlePrint}>{helloWorld}</div>;
 };
 ```
 
@@ -42,8 +42,8 @@ const ExampleComponent = () => {
 ```ts
 // Good
 interface UserInterface {
-  user_id: string;
-  user_name: string;
+  userId: string;
+  userName: string;
 }
 
 // Bad
@@ -134,13 +134,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod"; // 검증을 위해 zod 사용 권장
 
 // Search Params 검증 및 정규화
-const ai_search_schema = z.object({
+const aiSearchSchema = z.object({
   date: z.string().optional(),
-  agent_id: z.string().optional(),
+  agentId: z.string().optional(),
 });
 
 export const Route = createFileRoute("/(auth)/ai")({
-  validateSearch: (search) => ai_search_schema.parse(search),
+  validateSearch: (search) => aiSearchSchema.parse(search),
   component: AiDashboardPage,
 });
 ```
@@ -213,52 +213,46 @@ export async function createPost(
 - useMutation 성공 시(onSuccess), 관련된 쿼리 키를 invalidateQueries 하여 데이터 일관성을 유지합니다.
 
 ```ts
-// Example: src/hooks/queries/user-query.ts
+// query key
+export const agent_query_keys = {
+  all: ['agent'] as const,
+  list: () => [...agent_query_keys.all, 'list'] as const,
+}
 
-// 1. Query Key Factory
-export const user_query_keys = {
-  all: ["auth"] as const,
-  userInfo: () => [...user_query_keys.all, "user-info"] as const,
-};
-
-// 2. Query Options
-export const user_info_query_options = queryOptions({
-  queryKey: user_query_keys.userInfo(),
-  queryFn: async () => {
-    const res = await getUserInfo(); // 서비스 함수 호출
-    return res;
-  },
-  staleTime: 1000 * 60 * 5, // 5분
-});
-
-// 3. Custom Hooks
-export const useUserInfo = (
-  options?: UseQueryOptions<GetUserAccountDataInterface, Error>,
-) => {
+// useQuery
+export const useAgentRoleList = (options?: UseQueryOptions<AgentRoleDataInterface[], Error>) => {
   return useQuery({
-    ...user_info_query_options,
-    select: useCallback((data: GetUserAccountDataInterface) => data, []),
+    queryKey: agent_query_keys.list(),
+    queryFn: async () => {
+      const res = await getAgentRoleList()
+      return res
+    },
+    select: useCallback((data: AgentRoleDataInterface[]) => data, []),
     ...options,
-  });
-};
+  })
+}
 
-// 4. Mutation with Invalidation
-export const useEditUserInfo = (
-  options?: UseMutationOptions<
-    EditUserResponseInterface,
-    Error,
-    EditUserBodyInterface
-  >,
+// useMutation
+export const useCreateAgentRole = (
+  options?: UseMutationOptions<AgentRoleDataInterface, Error, AgentRoleCreateBodyInterface>,
 ) => {
-  const query_client = useQueryClient(); // 변수명 snake_case 준수
+  const query_client = useQueryClient()
+
   return useMutation({
-    mutationFn: (body: EditUserBodyInterface) => editUserInfo(body),
+    mutationFn: async (body: AgentRoleCreateBodyInterface) => {
+      const result = await createAgentRole(body)
+      return result
+    },
     onSuccess: () => {
-      query_client.invalidateQueries({ queryKey: user_query_keys.userInfo() });
+      query_client.invalidateQueries({ queryKey: agent_query_keys.all })
+      toast.success('에이전트가 생성되었습니다.')
+    },
+    onError: (error) => {
+      toast.error(error.message ?? '에이전트를 생성하지 못했습니다.')
     },
     ...options,
-  });
-};
+  })
+}
 ```
 
 ## 9. Project Folder Structure (Frontend)

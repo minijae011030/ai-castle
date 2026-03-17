@@ -63,7 +63,7 @@ const defaultForm = {
   memo: '',
 }
 
-const CalendarPage = () => {
+export const CalendarPage = () => {
   const { data: events = [], isPending } = useCalendarEventList()
   const { data: recurringSchedules = [], isPending: isRecurringPending } =
     useRecurringScheduleList()
@@ -698,5 +698,3 @@ const CalendarPage = () => {
     </div>
   )
 }
-
-export { CalendarPage }

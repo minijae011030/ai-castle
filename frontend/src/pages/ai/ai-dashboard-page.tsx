@@ -2,14 +2,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { useMainChatHistory, useSendMainChatMessage } from '@/hooks/queries/chat-query'
+import { cn } from '@/lib/utils'
 import type { ChatMessageInterface } from '@/types/chat.type'
 import { useEffect, useRef, useState } from 'react'
 
 const AiDashboardPage = () => {
   const { data: messages = [], isPending } = useMainChatHistory()
-  const send_mutation = useSendMainChatMessage()
+  const sendMutation = useSendMainChatMessage()
 
-  const [input_value, set_input_value] = useState('')
+  const [inputValue, setInputValue] = useState('')
   const scroll_ref = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -17,35 +18,36 @@ const AiDashboardPage = () => {
     scroll_ref.current.scrollTop = scroll_ref.current.scrollHeight
   }, [messages.length])
 
-  const handle_send = () => {
-    const content = input_value.trim()
-    if (!content || send_mutation.isPending) return
+  const handleSend = () => {
+    const content = inputValue.trim()
+    if (!content || sendMutation.isPending) return
 
-    set_input_value('')
-    send_mutation.mutate({ content })
+    setInputValue('')
+    sendMutation.mutate({ content })
   }
 
-  const handle_key_down: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
+  const handleKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      handle_send()
+      handleSend()
     }
   }
 
-  const render_message = (message: ChatMessageInterface) => {
-    const is_user = message.role === 'USER'
-    const is_assistant = message.role === 'ASSISTANT'
+  const renderMessage = (message: ChatMessageInterface) => {
+    const isUser = message.role === 'USER'
+    const isAssistant = message.role === 'ASSISTANT'
 
     return (
-      <div key={message.id} className={`flex w-full ${is_user ? 'justify-end' : 'justify-start'}`}>
+      <div key={message.id} className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}>
         <div
-          className={`max-w-[70%] rounded-lg px-3 py-2 text-xs ${
-            is_user
+          className={cn(
+            'max-w-[70%] rounded-lg px-3 py-2 text-xs',
+            isUser
               ? 'bg-primary text-primary-foreground'
-              : is_assistant
+              : isAssistant
                 ? 'bg-muted text-foreground'
-                : 'bg-secondary text-secondary-foreground'
-          }`}
+                : 'bg-secondary text-secondary-foreground',
+          )}
         >
           <p className="whitespace-pre-wrap">{message.content}</p>
         </div>
@@ -78,15 +80,15 @@ const AiDashboardPage = () => {
                 처럼 입력해 보세요.
               </p>
             ) : (
-              messages.map(render_message)
+              messages.map(renderMessage)
             )}
           </div>
 
           <div className="space-y-2">
             <Textarea
-              value={input_value}
-              onChange={(event) => set_input_value(event.target.value)}
-              onKeyDown={handle_key_down}
+              value={inputValue}
+              onChange={(event) => setInputValue(event.target.value)}
+              onKeyDown={handleKeyDown}
               rows={3}
               placeholder="메인 에이전트에게 문의할 내용을 입력하세요. (Shift+Enter 줄바꿈, Enter 전송)"
             />
@@ -94,8 +96,8 @@ const AiDashboardPage = () => {
               <Button
                 type="button"
                 size="sm"
-                onClick={handle_send}
-                disabled={!input_value.trim() || send_mutation.isPending}
+                onClick={handleSend}
+                disabled={!inputValue.trim() || sendMutation.isPending}
               >
                 보내기
               </Button>

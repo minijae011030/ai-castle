@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useUpdateUserSetting, useUserSetting } from '@/hooks/queries/user-setting-query'
 import { useState } from 'react'
 
-const SettingsPage = () => {
+export const SettingsPage = () => {
   const { data, isPending } = useUserSetting()
   const updateUserSettingMutation = useUpdateUserSetting()
 
@@ -178,5 +178,3 @@ const SettingsPage = () => {
     </div>
   )
 }
-
-export { SettingsPage }

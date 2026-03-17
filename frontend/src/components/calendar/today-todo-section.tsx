@@ -16,26 +16,26 @@ export const TodayTodoSection = ({
   onToggleCompleted,
 }: TodayTodoSectionPropsInterface) => {
   const todos_by_agent = todos.reduce<Record<number, TodoItemInterface[]>>((acc, todo) => {
-    const agent_id = todo.agent.id
-    if (!acc[agent_id]) acc[agent_id] = []
-    acc[agent_id].push(todo)
+    const agentId = todo.agent.id
+    if (!acc[agentId]) acc[agentId] = []
+    acc[agentId].push(todo)
     return acc
   }, {})
 
-  const agent_ids = Object.keys(todos_by_agent).map((id) => Number(id))
+  const agentIds = Object.keys(todos_by_agent).map((id) => Number(id))
 
-  if (isPending || agent_ids.length === 0) {
+  if (isPending || agentIds.length === 0) {
     // 로딩 중이거나 할 일이 없으면 아무것도 렌더링하지 않음
     return null
   }
 
   return (
     <div className="space-y-2 text-xs">
-      {agent_ids.map((agent_id) => {
-        const group = todos_by_agent[agent_id]
+      {agentIds.map((agentId) => {
+        const group = todos_by_agent[agentId]
         const agent_name = group[0]?.agent.name ?? '에이전트'
         return (
-          <div key={agent_id} className="space-y-1.5">
+          <div key={agentId} className="space-y-1.5">
             <p className="font-semibold text-foreground">{agent_name}</p>
             <ul className="space-y-1">
               {group.map((todo) => (

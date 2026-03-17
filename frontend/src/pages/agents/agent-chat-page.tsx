@@ -7,34 +7,37 @@ import type { ChatMessageInterface } from '@/types/chat.type'
 import { useRouter } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Route } from '@/routes/_protected/agents/$agentId.chat'
+import { cn } from '@/lib/utils'
 
-const AgentChatPage = () => {
+export const AgentChatPage = () => {
   const params = Route.useParams()
   const router = useRouter()
 
-  const agent_id = Number(params.agentId)
+  const agentId = Number(params.agentId)
 
   const { data: agents = [] } = useAgentRoleList()
-  const agent = useMemo(() => agents.find((a) => a.id === agent_id) ?? null, [agents, agent_id])
+  const { data: messages = [], isPending } = useAgentChatHistory(agentId)
 
-  const { data: messages = [], isPending } = useAgentChatHistory(agent_id)
-  const sendMutation = useSendAgentChatMessage(agent_id)
-
+  const agent = useMemo(() => agents.find((a) => a.id === agentId) ?? null, [agents, agentId])
+  const sendMutation = useSendAgentChatMessage(agentId)
   const [inputValue, setInputValue] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
+  // 에이전트 ID 유효성 검사
   useEffect(() => {
-    if (!agent_id || Number.isNaN(agent_id)) {
+    if (!agentId || Number.isNaN(agentId)) {
       router.navigate({ to: '/agents' })
     }
-  }, [agent_id, router])
+  }, [agentId, router])
 
+  // 채팅 스크롤 핸들러
   useEffect(() => {
     if (!scrollRef.current) return
 
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
 
+  // 채팅 전송 핸들러
   const handleSend = () => {
     const content = inputValue.trim()
     if (!content || sendMutation.isPending) return
@@ -43,6 +46,7 @@ const AgentChatPage = () => {
     sendMutation.mutate({ content })
   }
 
+  // 채팅 입력창 엔터키 누르면 전송 핸들러
   const handleKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
@@ -50,20 +54,22 @@ const AgentChatPage = () => {
     }
   }
 
+  // 채팅 메시지 렌더링 핸들러
   const renderMessage = (message: ChatMessageInterface) => {
-    const is_user = message.role === 'USER'
-    const is_assistant = message.role === 'ASSISTANT'
+    const isUser = message.role === 'USER'
+    const isAssistant = message.role === 'ASSISTANT'
 
     return (
-      <div key={message.id} className={`flex w-full ${is_user ? 'justify-end' : 'justify-start'}`}>
+      <div key={message.id} className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}>
         <div
-          className={`max-w-[70%] rounded-lg px-3 py-2 text-xs ${
-            is_user
+          className={cn(
+            'max-w-[70%] rounded-lg px-3 py-2 text-xs',
+            isUser
               ? 'bg-primary text-primary-foreground'
-              : is_assistant
+              : isAssistant
                 ? 'bg-muted text-foreground'
-                : 'bg-secondary text-secondary-foreground'
-          }`}
+                : 'bg-secondary text-secondary-foreground',
+          )}
         >
           <p className="whitespace-pre-wrap">{message.content}</p>
         </div>
@@ -138,5 +144,3 @@ const AgentChatPage = () => {
     </div>
   )
 }
-
-export { AgentChatPage }

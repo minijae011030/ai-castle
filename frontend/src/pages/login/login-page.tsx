@@ -6,7 +6,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { EyeIcon, EyeOffIcon } from 'lucide-react'
 import { useState } from 'react'
 
-const LoginPage = () => {
+export const LoginPage = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -81,5 +81,3 @@ const LoginPage = () => {
     </div>
   )
 }
-
-export { LoginPage }
