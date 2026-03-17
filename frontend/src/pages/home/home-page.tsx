@@ -7,8 +7,8 @@ import { useNavigate } from '@tanstack/react-router'
 
 const HomePage = () => {
   const navigate = useNavigate()
-  const health_query = useHealth()
-  const user_info = useUserStore((s) => s.userInfo)
+  const healthQuery = useHealth()
+  const userInfo = useUserStore((s) => s.userInfo)
 
   const handleLogout = () => {
     clearAuth()
@@ -16,7 +16,7 @@ const HomePage = () => {
   }
 
   const handleHealthCheck = () => {
-    health_query.refetch()
+    healthQuery.refetch()
   }
 
   return (
@@ -27,30 +27,32 @@ const HomePage = () => {
           로그아웃
         </Button>
       </div>
-      {user_info && (
+      {userInfo && (
         <p className="text-sm text-muted-foreground">
-          {user_info.user_name} ({user_info.email})
+          {userInfo.user_name} ({userInfo.email})
         </p>
       )}
       <Button
         onClick={handleHealthCheck}
-        disabled={health_query.isFetching}
-        className={cn(health_query.isFetching && 'opacity-70')}
+        disabled={healthQuery.isFetching}
+        className={cn(healthQuery.isFetching && 'opacity-70')}
       >
-        {health_query.isFetching ? '확인 중...' : '백엔드 헬스 체크'}
+        {healthQuery.isFetching ? '확인 중...' : '백엔드 헬스 체크'}
       </Button>
-      {health_query.data && (
+      {healthQuery.data && (
         <div className="rounded-lg border border-border bg-card p-4 text-card-foreground">
           <p className="font-medium">연결됨</p>
-          <p className="text-muted-foreground">
-            status: {health_query.data.data?.status ?? 'UNKNOWN'} / {health_query.data.message}
-          </p>
+          {healthQuery.data.data && (
+            <p className="text-muted-foreground">
+              status: {healthQuery.data.data?.status ?? 'UNKNOWN'} / {healthQuery.data.message}
+            </p>
+          )}
         </div>
       )}
-      {health_query.error && (
+      {healthQuery.error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
           <p className="font-medium">연결 실패</p>
-          <p>{health_query.error.message}</p>
+          <p>{healthQuery.error.message}</p>
         </div>
       )}
     </div>

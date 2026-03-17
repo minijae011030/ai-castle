@@ -4,22 +4,24 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
 import { useAgentRoleList } from '@/hooks/queries/agent-query'
 import type { ChatMessageInterface } from '@/types/chat.type'
-import { useParams, useRouter } from '@tanstack/react-router'
+import { useRouter } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Route } from '@/routes/_protected/agents/$agentId.chat'
 
 const AgentChatPage = () => {
-  const params = useParams({ from: '/agents/$agentId/chat' })
+  const params = Route.useParams()
+  const router = useRouter()
+
   const agent_id = Number(params.agentId)
 
   const { data: agents = [] } = useAgentRoleList()
   const agent = useMemo(() => agents.find((a) => a.id === agent_id) ?? null, [agents, agent_id])
 
   const { data: messages = [], isPending } = useAgentChatHistory(agent_id)
-  const send_mutation = useSendAgentChatMessage(agent_id)
+  const sendMutation = useSendAgentChatMessage(agent_id)
 
-  const [input_value, set_input_value] = useState('')
-  const scroll_ref = useRef<HTMLDivElement | null>(null)
-  const router = useRouter()
+  const [inputValue, setInputValue] = useState('')
+  const scrollRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!agent_id || Number.isNaN(agent_id)) {
@@ -28,26 +30,27 @@ const AgentChatPage = () => {
   }, [agent_id, router])
 
   useEffect(() => {
-    if (!scroll_ref.current) return
-    scroll_ref.current.scrollTop = scroll_ref.current.scrollHeight
+    if (!scrollRef.current) return
+
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
 
-  const handle_send = () => {
-    const content = input_value.trim()
-    if (!content || send_mutation.isPending) return
+  const handleSend = () => {
+    const content = inputValue.trim()
+    if (!content || sendMutation.isPending) return
 
-    set_input_value('')
-    send_mutation.mutate({ content })
+    setInputValue('')
+    sendMutation.mutate({ content })
   }
 
-  const handle_key_down: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
+  const handleKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      handle_send()
+      handleSend()
     }
   }
 
-  const render_message = (message: ChatMessageInterface) => {
+  const renderMessage = (message: ChatMessageInterface) => {
     const is_user = message.role === 'USER'
     const is_assistant = message.role === 'ASSISTANT'
 
@@ -97,7 +100,7 @@ const AgentChatPage = () => {
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col gap-3 pb-3">
           <div
-            ref={scroll_ref}
+            ref={scrollRef}
             className="flex-1 space-y-2 overflow-auto rounded-md border bg-background p-3"
           >
             {isPending ? (
@@ -107,15 +110,15 @@ const AgentChatPage = () => {
                 아직 대화가 없습니다. 아래 입력창에 질문이나 요청을 입력해 보세요.
               </p>
             ) : (
-              messages.map(render_message)
+              messages.map(renderMessage)
             )}
           </div>
 
           <div className="space-y-2">
             <Textarea
-              value={input_value}
-              onChange={(event) => set_input_value(event.target.value)}
-              onKeyDown={handle_key_down}
+              value={inputValue}
+              onChange={(event) => setInputValue(event.target.value)}
+              onKeyDown={handleKeyDown}
               rows={3}
               placeholder="메시지를 입력하세요. (Shift+Enter 줄바꿈, Enter 전송)"
             />
@@ -123,8 +126,8 @@ const AgentChatPage = () => {
               <Button
                 type="button"
                 size="sm"
-                onClick={handle_send}
-                disabled={!input_value.trim() || send_mutation.isPending}
+                onClick={handleSend}
+                disabled={!inputValue.trim() || sendMutation.isPending}
               >
                 보내기
               </Button>

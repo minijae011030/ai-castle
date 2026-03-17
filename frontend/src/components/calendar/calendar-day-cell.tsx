@@ -6,14 +6,14 @@ import React, { useMemo } from 'react'
 
 /** 이벤트가 해당 날짜에 걸쳐 있는지 (해당 날 하루 중에라도 겹치면 true) */
 function isEventOnDate(event: CalendarEventInterface, date: Date): boolean {
-  const day_start = startOfDay(date)
-  const day_end = endOfDay(date)
-  const event_start = startOfDay(parseISO(event.startAt))
-  const event_end = endOfDay(parseISO(event.endAt))
+  const dayStart = startOfDay(date)
+  const dayEnd = endOfDay(date)
+  const eventStart = startOfDay(parseISO(event.startAt))
+  const eventEnd = endOfDay(parseISO(event.endAt))
   return (
-    isWithinInterval(day_start, { start: event_start, end: event_end }) ||
-    isWithinInterval(day_end, { start: event_start, end: event_end }) ||
-    isWithinInterval(event_start, { start: day_start, end: day_end })
+    isWithinInterval(dayStart, { start: eventStart, end: eventEnd }) ||
+    isWithinInterval(dayEnd, { start: eventStart, end: eventEnd }) ||
+    isWithinInterval(eventStart, { start: dayStart, end: dayEnd })
   )
 }
 
@@ -31,7 +31,7 @@ interface CalendarDayCellPropsInterface extends React.ButtonHTMLAttributes<HTMLB
   day: { date: Date }
   modifiers: Record<string, boolean>
   events: CalendarEventInterface[]
-  recurring_schedules: RecurringScheduleDataInterface[]
+  recurringSchedules: RecurringScheduleDataInterface[]
   locale?: { code?: string }
 }
 
@@ -42,46 +42,46 @@ type CellItemInterface = {
 
 /** 캘린더 셀: 왼쪽 위 날짜 + 제목 최대 2개 + +N 배지 */
 export const CalendarDayCell = React.forwardRef<HTMLButtonElement, CalendarDayCellPropsInterface>(
-  ({ day, modifiers, events, recurring_schedules, locale, className, ...button_props }, ref) => {
-    const day_events = useMemo(
+  ({ day, modifiers, events, recurringSchedules, locale, className, ...button_props }, ref) => {
+    const dayEvents = useMemo(
       () => events.filter((event) => isEventOnDate(event, day.date)),
       [events, day.date],
     )
 
-    const recurring_titles = useMemo(() => {
-      if (!recurring_schedules.length) return [] as string[]
+    const recurringTitles = useMemo(() => {
+      if (!recurringSchedules.length) return [] as string[]
       const weekday_ix = day.date.getDay() // 0 (Sun) - 6 (Sat)
 
       const code = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][weekday_ix]
-      return recurring_schedules
+      return recurringSchedules
         .filter((s) => {
           if (!s.periodStart || !s.periodEnd) return false
-          const d_iso = day.date.toISOString().slice(0, 10)
-          const in_range = d_iso >= s.periodStart && d_iso <= s.periodEnd
-          if (!in_range) return false
+          const dIso = day.date.toISOString().slice(0, 10)
+          const inRange = dIso >= s.periodStart && dIso <= s.periodEnd
+          if (!inRange) return false
           if (!s.weekdays) return false
           return s.weekdays
             .split(',')
-            .map((w) => w.trim())
+            .map((w: string) => w.trim())
             .includes(code)
         })
-        .map((s) => s.title)
-    }, [recurring_schedules, day.date])
+        .map((s: RecurringScheduleDataInterface) => s.title)
+    }, [recurringSchedules, day.date])
 
     const items: CellItemInterface[] = useMemo(() => {
-      const normal_items = day_events.map<CellItemInterface>((e) => ({
+      const normalItems = dayEvents.map<CellItemInterface>((e) => ({
         key: `e-${e.id}`,
         title: e.title,
       }))
-      const recurring_items = recurring_titles.map<CellItemInterface>((title, index) => ({
+      const recurringItems = recurringTitles.map<CellItemInterface>((title, index) => ({
         key: `r-${index}-${day.date.toISOString().slice(0, 10)}`,
         title,
       }))
-      return [...normal_items, ...recurring_items]
-    }, [day_events, recurring_titles, day.date])
+      return [...normalItems, ...recurringItems]
+    }, [dayEvents, recurringTitles, day.date])
 
-    const show_items = items.slice(0, MAX_EVENTS_IN_CELL)
-    const rest_count = items.length - MAX_EVENTS_IN_CELL
+    const showItems = items.slice(0, MAX_EVENTS_IN_CELL)
+    const restCount = items.length - MAX_EVENTS_IN_CELL
 
     return (
       <button
@@ -102,7 +102,7 @@ export const CalendarDayCell = React.forwardRef<HTMLButtonElement, CalendarDayCe
       >
         <span className="shrink-0 font-medium text-inherit">{format(day.date, 'd')}</span>
         <div className="flex min-h-0 w-full flex-1 flex-col gap-0.5 overflow-hidden">
-          {show_items.map((item) => (
+          {showItems.map((item: CellItemInterface) => (
             <span
               key={item.key}
               className="block w-full truncate rounded bg-primary/20 px-1 py-0.5 text-[0.65rem] data-[selected-single=true]:bg-primary-foreground/20"
@@ -111,9 +111,9 @@ export const CalendarDayCell = React.forwardRef<HTMLButtonElement, CalendarDayCe
               {truncateTitle(item.title, TITLE_MAX_LEN)}
             </span>
           ))}
-          {rest_count > 0 && (
+          {restCount > 0 && (
             <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[0.65rem] font-medium text-white">
-              +{rest_count}
+              +{restCount}
             </span>
           )}
         </div>

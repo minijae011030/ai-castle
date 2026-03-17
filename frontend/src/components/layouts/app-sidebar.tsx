@@ -17,6 +17,40 @@ import { useUserStore } from '@/stores/user.store'
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { CalendarIcon, HomeIcon, LogOutIcon, SettingsIcon, UsersIcon } from 'lucide-react'
 
+interface AppSidebarPropsInterface {
+  title: string
+  link: string
+  icon: React.ReactNode
+  is_active: boolean
+}
+
+const SIDEBAR_ITEMS: AppSidebarPropsInterface[] = [
+  {
+    title: '홈',
+    link: '/',
+    icon: <HomeIcon />,
+    is_active: true,
+  },
+  {
+    title: '캘린더',
+    link: '/calendar',
+    icon: <CalendarIcon />,
+    is_active: false,
+  },
+  {
+    title: '에이전트',
+    link: '/agents',
+    icon: <UsersIcon />,
+    is_active: false,
+  },
+  {
+    title: '설정',
+    link: '/settings',
+    icon: <SettingsIcon />,
+    is_active: false,
+  },
+]
+
 export const AppSidebar = () => {
   const navigate = useNavigate()
   const router_state = useRouterState()
@@ -40,38 +74,16 @@ export const AppSidebar = () => {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={pathname === '/'}>
-                    <Link to="/">
-                      <HomeIcon />
-                      <span>홈</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={pathname.startsWith('/calendar')}>
-                    <Link to="/calendar">
-                      <CalendarIcon />
-                      <span>캘린더</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={pathname.startsWith('/agents')}>
-                    <Link to="/agents">
-                      <UsersIcon />
-                      <span>에이전트</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={pathname.startsWith('/settings')}>
-                    <Link to="/settings">
-                      <SettingsIcon />
-                      <span>설정</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {SIDEBAR_ITEMS.map((item) => (
+                  <SidebarMenuItem key={item.link}>
+                    <SidebarMenuButton asChild isActive={pathname === item.link}>
+                      <Link to={item.link}>
+                        {item.icon}
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

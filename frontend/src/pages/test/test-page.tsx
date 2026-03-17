@@ -457,7 +457,7 @@ export function TestPage() {
         </Section>
 
         <Section title="Resizable">
-          <ResizablePanelGroup direction="horizontal" className="w-64 border rounded-lg">
+          <ResizablePanelGroup orientation="horizontal" className="w-64 border rounded-lg">
             <ResizablePanel defaultSize={50}>A</ResizablePanel>
             <ResizableHandle />
             <ResizablePanel defaultSize={50}>B</ResizablePanel>

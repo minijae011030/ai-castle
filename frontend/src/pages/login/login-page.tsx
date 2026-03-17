@@ -10,14 +10,14 @@ const LoginPage = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [show_password, setShowPassword] = useState(false)
-  const { mutateAsync: login, isPending, reset } = useLogin()
+  const [showPassword, setShowPassword] = useState(false)
+  const loginMutation = useLogin()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    reset()
-    await login({ email, password })
+    loginMutation.reset()
+    await loginMutation.mutateAsync({ email, password })
     navigate({ to: '/' })
   }
 
@@ -46,7 +46,7 @@ const LoginPage = () => {
             <div className="relative">
               <Input
                 id="login-password"
-                type={show_password ? 'text' : 'password'}
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -60,15 +60,15 @@ const LoginPage = () => {
                 size="icon"
                 className="absolute right-0 top-0 h-10 w-10 text-muted-foreground hover:text-foreground"
                 onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={show_password ? '비밀번호 숨기기' : '비밀번호 보기'}
+                aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
               >
-                {show_password ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+                {showPassword ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
               </Button>
             </div>
           </div>
 
-          <Button type="submit" disabled={isPending} className="mt-2 h-10">
-            {isPending ? '로그인 중...' : '로그인'}
+          <Button type="submit" disabled={loginMutation.isPending} className="mt-2 h-10">
+            {loginMutation.isPending ? '로그인 중...' : '로그인'}
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-muted-foreground">

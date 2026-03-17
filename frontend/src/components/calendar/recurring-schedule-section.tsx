@@ -23,7 +23,7 @@ import { CheckCircle2Icon, CircleIcon, PencilIcon, Trash2Icon } from 'lucide-rea
 
 type WeekdayValue = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
-const weekday_options: { value: WeekdayValue; label: string }[] = [
+const weekdayOptions: { value: WeekdayValue; label: string }[] = [
   { value: 'mon', label: '월' },
   { value: 'tue', label: '화' },
   { value: 'wed', label: '수' },
@@ -35,7 +35,7 @@ const weekday_options: { value: WeekdayValue; label: string }[] = [
 
 const format_weekdays = (weekdays: WeekdayValue[]): string => {
   if (weekdays.length === 0) return ''
-  const ordered = weekday_options.filter((w) => weekdays.includes(w.value))
+  const ordered = weekdayOptions.filter((w) => weekdays.includes(w.value))
   return ordered.map((w) => w.label).join(',')
 }
 
@@ -71,90 +71,90 @@ const parse_backend_weekdays = (weekdays: string): WeekdayValue[] => {
 }
 
 interface RecurringScheduleSectionPropsInterface {
-  selected_date: Date
-  recurring_schedules: RecurringScheduleDataInterface[]
-  is_pending: boolean
+  selectedDate: Date
+  recurringSchedules: RecurringScheduleDataInterface[]
+  isPending: boolean
   /** 해당 날짜에서 사용자가 완료 처리한 정기 일정 ID 목록 */
-  completed_recurring_ids: number[]
+  completedRecurringIds: number[]
   /** 정기 일정 완료 토글 클릭 시 호출되는 콜백 */
-  on_toggle_completed: (id: number) => void
+  onToggleCompleted: (id: number) => void
 }
 
 export const RecurringScheduleSection = ({
-  selected_date,
-  recurring_schedules,
-  is_pending,
-  completed_recurring_ids,
-  on_toggle_completed,
+  selectedDate,
+  recurringSchedules,
+  isPending,
+  completedRecurringIds,
+  onToggleCompleted,
 }: RecurringScheduleSectionPropsInterface) => {
-  const create_mutation = useCreateRecurringSchedule()
-  const update_mutation = useUpdateRecurringSchedule()
-  const delete_mutation = useDeleteRecurringSchedule()
+  const createMutation = useCreateRecurringSchedule()
+  const updateMutation = useUpdateRecurringSchedule()
+  const deleteMutation = useDeleteRecurringSchedule()
 
-  const [dialog_open, set_dialog_open] = useState(false)
-  const [editing_item, set_editing_item] = useState<RecurringScheduleDataInterface | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<RecurringScheduleDataInterface | null>(null)
 
-  const [title, set_title] = useState('')
-  const [start_date, set_start_date] = useState('')
-  const [end_date, set_end_date] = useState('')
-  const [weekdays, set_weekdays] = useState<WeekdayValue[]>([])
-  const [start_time, set_start_time] = useState('')
-  const [end_time, set_end_time] = useState('')
-  const [memo, set_memo] = useState('')
+  const [title, setTitle] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [weekdays, setWeekdays] = useState<WeekdayValue[]>([])
+  const [startTime, setStartTime] = useState('')
+  const [endTime, setEndTime] = useState('')
+  const [memo, setMemo] = useState('')
 
-  const handle_close = () => {
-    set_dialog_open(false)
+  const handleClose = () => {
+    setDialogOpen(false)
   }
 
   const handleEditOpen = (item: RecurringScheduleDataInterface) => {
-    set_editing_item(item)
-    set_title(item.title)
-    set_start_date(item.periodStart)
-    set_end_date(item.periodEnd)
-    set_weekdays(parse_backend_weekdays(item.weekdays))
-    set_start_time(item.startTime.slice(0, 5))
-    set_end_time(item.endTime.slice(0, 5))
-    set_memo(item.memo ?? '')
-    set_dialog_open(true)
+    setEditingItem(item)
+    setTitle(item.title)
+    setStartDate(item.periodStart)
+    setEndDate(item.periodEnd)
+    setWeekdays(parse_backend_weekdays(item.weekdays))
+    setStartTime(item.startTime.slice(0, 5))
+    setEndTime(item.endTime.slice(0, 5))
+    setMemo(item.memo ?? '')
+    setDialogOpen(true)
   }
 
   const toggleWeekday = (value: WeekdayValue) => {
-    set_weekdays((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
+    setWeekdays((prev) =>
+      prev.includes(value) ? prev.filter((v: WeekdayValue) => v !== value) : [...prev, value],
     )
   }
 
   const is_valid =
     title.trim().length > 0 &&
-    start_date &&
-    end_date &&
-    start_date <= end_date &&
+    startDate &&
+    endDate &&
+    startDate <= endDate &&
     weekdays.length > 0 &&
-    start_time &&
-    end_time &&
-    start_time < end_time
+    startTime &&
+    endTime &&
+    startTime < endTime
 
   const handleSubmit = async () => {
     if (!is_valid) return
     const payload = {
       title: title.trim(),
-      periodStart: start_date,
-      periodEnd: end_date,
+      periodStart: startDate,
+      periodEnd: endDate,
       weekdays: to_backend_weekdays(weekdays),
-      startTime: start_time,
-      endTime: end_time,
+      startTime: startTime,
+      endTime: endTime,
       memo: memo.trim() || undefined,
     }
 
-    if (editing_item) {
-      await update_mutation.mutateAsync({
-        id: editing_item.id,
+    if (editingItem) {
+      await updateMutation.mutateAsync({
+        id: editingItem.id,
         body: payload,
       })
     } else {
-      await create_mutation.mutateAsync(payload)
+      await createMutation.mutateAsync(payload)
     }
-    handle_close()
+    handleClose()
   }
 
   const handleDelete = async (id: number) => {
@@ -162,36 +162,37 @@ export const RecurringScheduleSection = ({
       '이 정기 일정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
     )
     if (!confirmed) return
-    await delete_mutation.mutateAsync(id)
+    await deleteMutation.mutateAsync(id)
   }
 
   // 선택된 날짜 기준으로 실제 해당되는 정기 일정만 필터링
-  const selected_date_str = format(selected_date, 'yyyy-MM-dd')
-  const weekday_by_index: string[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
-  const selected_weekday_code = weekday_by_index[selected_date.getDay()]
+  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
+  const weekdayByIndex: string[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+  const selectedWeekdayCode = weekdayByIndex[selectedDate.getDay()]
 
-  const items_for_selected = recurring_schedules.filter((item) => {
-    const in_period = item.periodStart <= selected_date_str && selected_date_str <= item.periodEnd
-    if (!in_period) return false
+  const itemsForSelected = recurringSchedules.filter((item) => {
+    const inPeriod = item.periodStart <= selectedDateStr && selectedDateStr <= item.periodEnd
+    if (!inPeriod) return false
 
-    if (!selected_weekday_code) return false
+    if (!selectedWeekdayCode) return false
 
-    const weekday_tokens = item.weekdays
+    const weekdayTokens = item.weekdays
       .split(',')
       .map((s) => s.trim())
+      .map((s: string) => s.trim())
       .filter(Boolean)
 
-    return weekday_tokens.includes(selected_weekday_code)
+    return weekdayTokens.includes(selectedWeekdayCode)
   })
 
-  if (is_pending || items_for_selected.length === 0) {
+  if (isPending || itemsForSelected.length === 0) {
     return null
   }
 
   return (
     <div className="min-w-0 flex-1 space-y-2">
       <ul className="flex flex-col gap-2">
-        {items_for_selected.map((item: RecurringScheduleDataInterface) => (
+        {itemsForSelected.map((item: RecurringScheduleDataInterface) => (
           <Card key={item.id} size="sm">
             <CardHeader className="flex items-start justify-between gap-2 pb-2">
               <div className="flex items-center gap-2">
@@ -200,9 +201,9 @@ export const RecurringScheduleSection = ({
                   variant="ghost"
                   size="icon-sm"
                   aria-label="정기 일정 완료 토글"
-                  onClick={() => on_toggle_completed(item.id)}
+                  onClick={() => onToggleCompleted(item.id)}
                 >
-                  {completed_recurring_ids.includes(item.id) ? (
+                  {completedRecurringIds.includes(item.id) ? (
                     <CheckCircle2Icon className="size-4 text-primary" />
                   ) : (
                     <CircleIcon className="size-4 text-muted-foreground" />
@@ -211,8 +212,7 @@ export const RecurringScheduleSection = ({
                 <p
                   className={cn(
                     'text-sm font-medium',
-                    completed_recurring_ids.includes(item.id) &&
-                      'text-muted-foreground line-through',
+                    completedRecurringIds.includes(item.id) && 'text-muted-foreground line-through',
                   )}
                 >
                   {item.title}
@@ -234,7 +234,7 @@ export const RecurringScheduleSection = ({
                   size="icon-sm"
                   aria-label="정기 일정 삭제"
                   onClick={() => handleDelete(item.id)}
-                  disabled={delete_mutation.isPending}
+                  disabled={deleteMutation.isPending}
                 >
                   <Trash2Icon className="size-4" />
                 </Button>
@@ -259,10 +259,10 @@ export const RecurringScheduleSection = ({
         ))}
       </ul>
 
-      <Dialog open={dialog_open} onOpenChange={(open) => !open && handle_close()}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => !open && handleClose()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editing_item ? '정기 일정 수정' : '정기 일정 추가'}</DialogTitle>
+            <DialogTitle>{editingItem ? '정기 일정 수정' : '정기 일정 추가'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
@@ -270,7 +270,7 @@ export const RecurringScheduleSection = ({
               <Input
                 id="recurring-title"
                 value={title}
-                onChange={(e) => set_title(e.target.value)}
+                onChange={(e) => setTitle(e.target.value)}
                 placeholder="예: 알바"
               />
             </div>
@@ -279,17 +279,13 @@ export const RecurringScheduleSection = ({
               <div className="flex gap-2">
                 <Input
                   type="date"
-                  value={start_date}
-                  onChange={(e) => set_start_date(e.target.value)}
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
                 />
                 <span className="self-center text-xs text-muted-foreground">~</span>
-                <Input
-                  type="date"
-                  value={end_date}
-                  onChange={(e) => set_end_date(e.target.value)}
-                />
+                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
               </div>
-              {start_date && end_date && start_date > end_date && (
+              {startDate && endDate && startDate > endDate && (
                 <p className="text-xs text-destructive">
                   시작일은 종료일보다 빠르거나 같아야 합니다.
                 </p>
@@ -298,7 +294,7 @@ export const RecurringScheduleSection = ({
             <div className="grid gap-2">
               <Label>요일 (최소 1개)</Label>
               <div className="flex flex-wrap gap-1.5">
-                {weekday_options.map((opt) => {
+                {weekdayOptions.map((opt) => {
                   const active = weekdays.includes(opt.value)
                   return (
                     <Button
@@ -323,17 +319,13 @@ export const RecurringScheduleSection = ({
               <div className="flex gap-2">
                 <Input
                   type="time"
-                  value={start_time}
-                  onChange={(e) => set_start_time(e.target.value)}
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
                 />
                 <span className="self-center text-xs text-muted-foreground">~</span>
-                <Input
-                  type="time"
-                  value={end_time}
-                  onChange={(e) => set_end_time(e.target.value)}
-                />
+                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
               </div>
-              {start_time && end_time && start_time >= end_time && (
+              {startTime && endTime && startTime >= endTime && (
                 <p className="text-xs text-destructive">시작 시간은 종료 시간보다 빨라야 합니다.</p>
               )}
             </div>
@@ -342,14 +334,14 @@ export const RecurringScheduleSection = ({
               <Textarea
                 id="recurring-memo"
                 value={memo}
-                onChange={(e) => set_memo(e.target.value)}
+                onChange={(e) => setMemo(e.target.value)}
                 placeholder="예: 매장 A, 주휴수당 포함 등"
                 rows={3}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" size="sm" onClick={handle_close}>
+            <Button type="button" variant="outline" size="sm" onClick={handleClose}>
               취소
             </Button>
             <Button type="button" size="sm" onClick={handleSubmit} disabled={!is_valid}>

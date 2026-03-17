@@ -41,27 +41,22 @@ import { CalendarDayCell } from '@/components/calendar/calendar-day-cell'
 import { CalendarEventListSection } from '@/components/calendar/calendar-event-list-section'
 import { RecurringScheduleSection } from '@/components/calendar/recurring-schedule-section'
 import { TodayTodoSection } from '@/components/calendar/today-todo-section'
-
-/** datetime-local 값 → API용 ISO 형식 (초 포함) */
-function toApiDatetime(value: string): string {
-  if (!value) return ''
-  return value.length === 16 ? `${value}:00` : value
-}
+import { toApiDatetime } from '@/lib/format'
 
 /** 이벤트가 해당 날짜에 걸쳐 있는지 (해당 날 하루 중에라도 겹치면 true) */
 function isEventOnDate(event: CalendarEventInterface, date: Date): boolean {
-  const day_start = startOfDay(date)
-  const day_end = endOfDay(date)
-  const event_start = startOfDay(parseISO(event.startAt))
-  const event_end = endOfDay(parseISO(event.endAt))
+  const dayStart = startOfDay(date)
+  const dayEnd = endOfDay(date)
+  const eventStart = startOfDay(parseISO(event.startAt))
+  const eventEnd = endOfDay(parseISO(event.endAt))
   return (
-    isWithinInterval(day_start, { start: event_start, end: event_end }) ||
-    isWithinInterval(day_end, { start: event_start, end: event_end }) ||
-    isWithinInterval(event_start, { start: day_start, end: day_end })
+    isWithinInterval(dayStart, { start: eventStart, end: eventEnd }) ||
+    isWithinInterval(dayEnd, { start: eventStart, end: eventEnd }) ||
+    isWithinInterval(eventStart, { start: dayStart, end: dayEnd })
   )
 }
 
-const default_form = {
+const defaultForm = {
   title: '',
   startAt: '',
   endAt: '',
@@ -70,124 +65,143 @@ const default_form = {
 
 const CalendarPage = () => {
   const { data: events = [], isPending } = useCalendarEventList()
-  const { data: recurring_schedules = [], isPending: isRecurringPending } =
+  const { data: recurringSchedules = [], isPending: isRecurringPending } =
     useRecurringScheduleList()
-  const create_mutation = useCreateCalendarEvent()
-  const update_mutation = useUpdateCalendarEvent()
-  const delete_mutation = useDeleteCalendarEvent()
-  const create_recurring_mutation = useCreateRecurringSchedule()
-  const create_todo_mutation = useCreateTodo()
-  const update_todo_status_mutation = useUpdateTodoStatus()
 
-  const [selected_date, set_selected_date] = useState<Date>(() => new Date())
+  const createMutation = useCreateCalendarEvent()
+  const updateMutation = useUpdateCalendarEvent()
+  const deleteMutation = useDeleteCalendarEvent()
+  const createRecurringMutation = useCreateRecurringSchedule()
+  const createTodoMutation = useCreateTodo()
+  const updateTodoStatusMutation = useUpdateTodoStatus()
+
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
   // 사용자가 완료 처리한 일정/정기일정 ID 목록 (프론트 로컬 상태)
-  const [completed_event_ids, set_completed_event_ids] = useState<number[]>([])
-  const [completed_recurring_ids, set_completed_recurring_ids] = useState<number[]>([])
+  const [completedEventIds, setCompletedEventIds] = useState<number[]>([])
+  const [completedRecurringIds, setCompletedRecurringIds] = useState<number[]>([])
 
   // 일정(단일 이벤트) 수정/추가 다이얼로그 (기존)
-  const [event_dialog_open, set_event_dialog_open] = useState(false)
-  const [editing_event, set_editing_event] = useState<CalendarEventInterface | null>(null)
-  const [form, set_form] = useState(default_form)
-  const [delete_target_id, set_delete_target_id] = useState<number | null>(null)
+  const [eventDialogOpen, setEventDialogOpen] = useState(false)
+  const [editingEvent, setEditingEvent] = useState<CalendarEventInterface | null>(null)
+  const [form, setForm] = useState(defaultForm)
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
 
   // 공통 추가 다이얼로그 (정기일정 | 일정 | 할 일)
-  const [create_dialog_open, set_create_dialog_open] = useState(false)
-  const [create_tab, set_create_tab] = useState<'recurring' | 'event' | 'todo'>('event')
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [createTab, setCreateTab] = useState<'recurring' | 'event' | 'todo'>('event')
 
   // 정기일정 폼 상태
-  const [recurring_title, set_recurring_title] = useState('')
-  const [recurring_start_date, set_recurring_start_date] = useState('')
-  const [recurring_end_date, set_recurring_end_date] = useState('')
-  const [recurring_weekdays, set_recurring_weekdays] = useState<string[]>([])
-  const [recurring_start_time, set_recurring_start_time] = useState('')
-  const [recurring_end_time, set_recurring_end_time] = useState('')
-  const [recurring_memo, set_recurring_memo] = useState('')
+  const [recurringTitle, setRecurringTitle] = useState('')
+  const [recurringStartDate, setRecurringStartDate] = useState('')
+  const [recurringEndDate, setRecurringEndDate] = useState('')
+  const [recurringWeekdays, setRecurringWeekdays] = useState<string[]>([])
+  const [recurringStartTime, setRecurringStartTime] = useState('')
+  const [recurringEndTime, setRecurringEndTime] = useState('')
+  const [recurringMemo, setRecurringMemo] = useState('')
 
   // 일정(단일 이벤트) 생성 폼 상태
-  const [create_event_title, set_create_event_title] = useState('')
-  const [create_event_start_at, set_create_event_start_at] = useState('')
-  const [create_event_end_at, set_create_event_end_at] = useState('')
-  const [create_event_memo, set_create_event_memo] = useState('')
+  const [createEventTitle, setCreateEventTitle] = useState('')
+  const [createEventStartAt, setCreateEventStartAt] = useState('')
+  const [createEventEndAt, setCreateEventEndAt] = useState('')
+  const [createEventMemo, setCreateEventMemo] = useState('')
 
   // 할 일 생성 폼 상태
-  const [todo_title, set_todo_title] = useState('')
-  const [todo_description, set_todo_description] = useState('')
-  const [todo_agent_role_id, set_todo_agent_role_id] = useState<string>('1')
-  const [todo_order_index, set_todo_order_index] = useState<string>('')
+  const [todoTitle, setTodoTitle] = useState('')
+  const [todoDescription, setTodoDescription] = useState('')
+  const [todoAgentRoleId, setTodoAgentRoleId] = useState<string>('1')
+  const [todoOrderIndex, setTodoOrderIndex] = useState<string>('')
 
-  const selected_date_str = useMemo(() => format(selected_date, 'yyyy-MM-dd'), [selected_date])
-  const { data: todos = [], isPending: isTodoPending } = useTodoListByDate(selected_date_str)
+  const selectedDateStr = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate])
+  const { data: todos = [], isPending: isTodoPending } = useTodoListByDate(selectedDateStr)
 
-  const events_on_selected = useMemo(
-    () => events.filter((e) => isEventOnDate(e, selected_date)),
-    [events, selected_date],
+  const eventsOnSelected = useMemo(
+    () => events.filter((e) => isEventOnDate(e, selectedDate)),
+    [events, selectedDate],
   )
 
   // 선택된 날짜에 실제로 해당되는 정기 일정만 필터링 (우측 컬럼용 존재 여부 체크)
-  const recurring_on_selected = useMemo(() => {
-    const selected_weekday_index = selected_date.getDay()
-    const weekday_by_index: string[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
-    const selected_weekday_code = weekday_by_index[selected_weekday_index]
+  const recurringOnSelected = useMemo(() => {
+    const selectedWeekdayIndex = selectedDate.getDay()
+    const weekdayByIndex: string[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+    const selectedWeekdayCode = weekdayByIndex[selectedWeekdayIndex]
 
-    return recurring_schedules.filter((item) => {
-      const in_period = item.periodStart <= selected_date_str && selected_date_str <= item.periodEnd
-      if (!in_period) return false
+    return recurringSchedules.filter((item) => {
+      const inPeriod = item.periodStart <= selectedDateStr && selectedDateStr <= item.periodEnd
+      if (!inPeriod) return false
 
-      if (!selected_weekday_code) return false
+      if (!selectedWeekdayCode) return false
 
-      const weekday_tokens = item.weekdays
+      const weekdayTokens = item.weekdays
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean)
 
-      return weekday_tokens.includes(selected_weekday_code)
+      return weekdayTokens.includes(selectedWeekdayCode)
     })
-  }, [recurring_schedules, selected_date, selected_date_str])
+  }, [recurringSchedules, selectedDate, selectedDateStr])
 
-  const close_event_dialog = useCallback(() => {
-    set_event_dialog_open(false)
-    set_editing_event(null)
-    set_form(default_form)
+  const handleClickSaveRecurring = async () => {
+    const payload = {
+      title: recurringTitle.trim(),
+      periodStart: recurringStartDate,
+      periodEnd: recurringEndDate,
+      weekdays: recurringWeekdays.join(','),
+      startTime: recurringStartTime,
+      endTime: recurringEndTime,
+      memo: recurringMemo.trim() || undefined,
+    }
+
+    await createRecurringMutation.mutateAsync(payload, {
+      onSuccess: () => {
+        setCreateDialogOpen(false)
+      },
+    })
+  }
+
+  const closeEventDialog = useCallback(() => {
+    setEventDialogOpen(false)
+    setEditingEvent(null)
+    setForm(defaultForm)
   }, [])
 
   const submit = () => {
     const title = form.title.trim()
     if (!title) return
-    const start_at = toApiDatetime(form.startAt)
-    const end_at = toApiDatetime(form.endAt)
-    if (!start_at || !end_at) return
+    const startAt = toApiDatetime(form.startAt)
+    const endAt = toApiDatetime(form.endAt)
+    if (!startAt || !endAt) return
 
-    const on_success = () => close_event_dialog()
+    const onSuccess = () => closeEventDialog()
 
-    if (editing_event) {
-      update_mutation.mutate(
+    if (editingEvent) {
+      updateMutation.mutate(
         {
-          id: editing_event.id,
+          id: editingEvent.id,
           body: {
             title,
-            startAt: start_at,
-            endAt: end_at,
+            startAt: startAt,
+            endAt: endAt,
             memo: form.memo || undefined,
           },
         },
-        { onSuccess: on_success },
+        { onSuccess: onSuccess },
       )
     } else {
-      create_mutation.mutate(
+      createMutation.mutate(
         {
           title,
-          startAt: start_at,
-          endAt: end_at,
+          startAt: startAt,
+          endAt: endAt,
           memo: form.memo || undefined,
         },
-        { onSuccess: on_success },
+        { onSuccess: onSuccess },
       )
     }
   }
 
-  const confirm_delete = (id: number) => {
-    delete_mutation.mutate(id, {
-      onSuccess: () => set_delete_target_id(null),
+  const confirmDelete = (id: number) => {
+    deleteMutation.mutate(id, {
+      onSuccess: () => setDeleteTargetId(null),
     })
   }
 
@@ -197,11 +211,11 @@ const CalendarPage = () => {
       <div className="w-[42rem] shrink-0">
         <Calendar
           mode="single"
-          selected={selected_date}
+          selected={selectedDate}
           onSelect={(d) => {
             if (!d) return
             // 날짜 변경 시 선택 날짜만 바꾸고, 완료 체크 상태는 유지
-            set_selected_date(d)
+            setSelectedDate(d)
           }}
           locale={ko}
           className="[--cell-size:6rem]"
@@ -213,7 +227,7 @@ const CalendarPage = () => {
             DayButton: (props) => (
               <CalendarDayCell
                 events={events}
-                recurring_schedules={recurring_schedules}
+                recurringSchedules={recurringSchedules}
                 locale={ko}
                 {...props}
               />
@@ -226,98 +240,96 @@ const CalendarPage = () => {
       <div className="min-w-0 flex-1 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-semibold">
-            {format(selected_date, 'yyyy년 M월 d일 (EEE)', { locale: ko })}
+            {format(selectedDate, 'yyyy년 M월 d일 (EEE)', { locale: ko })}
           </h2>
           <Button
             size="sm"
             variant="outline"
             onClick={() => {
               // 공통 추가 다이얼로그 초기화
-              const base = format(selected_date, 'yyyy-MM-dd')
+              const base = format(selectedDate, 'yyyy-MM-dd')
               const weekday_by_index: string[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
-              const selected_weekday_code = weekday_by_index[selected_date.getDay()]
+              const selected_weekday_code = weekday_by_index[selectedDate.getDay()]
 
-              set_create_tab('event')
+              setCreateTab('event')
               // 정기일정 기본값
-              set_recurring_title('')
-              set_recurring_start_date(base)
-              set_recurring_end_date(base)
-              set_recurring_weekdays(selected_weekday_code ? [selected_weekday_code] : [])
-              set_recurring_start_time('09:00')
-              set_recurring_end_time('10:00')
-              set_recurring_memo('')
+              setRecurringTitle('')
+              setRecurringStartDate(base)
+              setRecurringEndDate(base)
+              setRecurringWeekdays(selected_weekday_code ? [selected_weekday_code] : [])
+              setRecurringStartTime('09:00')
+              setRecurringEndTime('10:00')
+              setRecurringMemo('')
               // 일정 기본값
-              set_create_event_title('')
-              set_create_event_start_at(`${base}T09:00`)
-              set_create_event_end_at(`${base}T10:00`)
-              set_create_event_memo('')
+              setCreateEventTitle('')
+              setCreateEventStartAt(`${base}T09:00`)
+              setCreateEventEndAt(`${base}T10:00`)
+              setCreateEventMemo('')
               // Todo 기본값
-              set_todo_title('')
-              set_todo_description('')
-              set_todo_order_index('')
-              set_todo_agent_role_id('1')
+              setTodoTitle('')
+              setTodoDescription('')
+              setTodoOrderIndex('')
+              setTodoAgentRoleId('1')
 
-              set_create_dialog_open(true)
+              setCreateDialogOpen(true)
             }}
           >
             + 추가
           </Button>
         </div>
         <RecurringScheduleSection
-          selected_date={selected_date}
-          recurring_schedules={recurring_schedules}
-          is_pending={isRecurringPending}
-          completed_recurring_ids={completed_recurring_ids}
-          on_toggle_completed={(id) => {
+          selectedDate={selectedDate}
+          recurringSchedules={recurringSchedules}
+          isPending={isRecurringPending}
+          completedRecurringIds={completedRecurringIds}
+          onToggleCompleted={(id) => {
             // 정기 일정 완료 토글
-            set_completed_recurring_ids((prev_ids) =>
-              prev_ids.includes(id)
-                ? prev_ids.filter((recurring_id) => recurring_id !== id)
-                : [...prev_ids, id],
+            setCompletedRecurringIds((prevIds) =>
+              prevIds.includes(id)
+                ? prevIds.filter((recurringId) => recurringId !== id)
+                : [...prevIds, id],
             )
           }}
         />
         <CalendarEventListSection
-          events_on_selected={events_on_selected}
-          is_pending={isPending}
-          on_click_edit={(event) => {
-            set_editing_event(event)
-            set_form({
+          eventsOnSelected={eventsOnSelected}
+          isPending={isPending}
+          onEditClick={(event) => {
+            setEditingEvent(event)
+            setForm({
               title: event.title,
               startAt: event.startAt.slice(0, 16),
               endAt: event.endAt.slice(0, 16),
               memo: event.memo ?? '',
             })
-            set_event_dialog_open(true)
+            setEventDialogOpen(true)
           }}
-          on_click_delete={(id) => set_delete_target_id(id)}
-          completed_event_ids={completed_event_ids}
-          on_toggle_completed={(id) => {
+          onDeleteClick={(id) => setDeleteTargetId(id)}
+          completedEventIds={completedEventIds}
+          onToggleCompleted={(id) => {
             // 일정 완료 토글 (이미 완료면 해제, 아니면 완료로 표시)
-            set_completed_event_ids((prev_ids) =>
-              prev_ids.includes(id)
-                ? prev_ids.filter((event_id) => event_id !== id)
-                : [...prev_ids, id],
+            setCompletedEventIds((prevIds) =>
+              prevIds.includes(id) ? prevIds.filter((eventId) => eventId !== id) : [...prevIds, id],
             )
           }}
         />
         <TodayTodoSection
           todos={todos}
-          is_pending={isTodoPending}
-          on_toggle_completed={(todo: TodoItemInterface) => {
+          isPending={isTodoPending}
+          onToggleCompleted={(todo: TodoItemInterface) => {
             // Todo 상태를 서버에 반영 (DONE <-> PENDING 토글)
-            const next_status: TodoStatus = todo.status === 'DONE' ? 'PENDING' : 'DONE'
-            update_todo_status_mutation.mutate({
+            const nextStatus: TodoStatus = todo.status === 'DONE' ? 'PENDING' : 'DONE'
+            updateTodoStatusMutation.mutate({
               id: todo.id,
-              body: { status: next_status },
+              body: { status: nextStatus },
             })
           }}
         />
         {!isPending &&
           !isRecurringPending &&
           !isTodoPending &&
-          events_on_selected.length === 0 &&
-          recurring_on_selected.length === 0 &&
+          eventsOnSelected.length === 0 &&
+          recurringOnSelected.length === 0 &&
           todos.length === 0 && (
             <p className="text-xs text-muted-foreground">
               해당 날짜에는 정기 일정, 일정, 할 일이 없습니다.
@@ -326,10 +338,10 @@ const CalendarPage = () => {
       </div>
 
       {/* 일정(단일 이벤트) 추가/수정 다이얼로그 (기존) */}
-      <Dialog open={event_dialog_open} onOpenChange={(open) => !open && close_event_dialog()}>
+      <Dialog open={eventDialogOpen} onOpenChange={(open) => !open && closeEventDialog()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editing_event ? '이벤트 수정' : '이벤트 추가'}</DialogTitle>
+            <DialogTitle>{editingEvent ? '이벤트 수정' : '이벤트 추가'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
@@ -337,7 +349,7 @@ const CalendarPage = () => {
               <Input
                 id="event-title"
                 value={form.title}
-                onChange={(e) => set_form((p) => ({ ...p, title: e.target.value }))}
+                onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
                 placeholder="제목"
               />
             </div>
@@ -347,7 +359,7 @@ const CalendarPage = () => {
                 id="event-start"
                 type="datetime-local"
                 value={form.startAt}
-                onChange={(e) => set_form((p) => ({ ...p, startAt: e.target.value }))}
+                onChange={(e) => setForm((p) => ({ ...p, startAt: e.target.value }))}
               />
             </div>
             <div className="grid gap-2">
@@ -356,7 +368,7 @@ const CalendarPage = () => {
                 id="event-end"
                 type="datetime-local"
                 value={form.endAt}
-                onChange={(e) => set_form((p) => ({ ...p, endAt: e.target.value }))}
+                onChange={(e) => setForm((p) => ({ ...p, endAt: e.target.value }))}
               />
             </div>
             <div className="grid gap-2">
@@ -364,7 +376,7 @@ const CalendarPage = () => {
               <Textarea
                 id="event-memo"
                 value={form.memo}
-                onChange={(e) => set_form((p) => ({ ...p, memo: e.target.value }))}
+                onChange={(e) => setForm((p) => ({ ...p, memo: e.target.value }))}
                 placeholder="메모"
                 rows={3}
               />
@@ -377,24 +389,24 @@ const CalendarPage = () => {
                 !form.title.trim() ||
                 !form.startAt ||
                 !form.endAt ||
-                create_mutation.isPending ||
-                update_mutation.isPending
+                createMutation.isPending ||
+                updateMutation.isPending
               }
             >
-              {editing_event ? '수정' : '등록'}
+              {editingEvent ? '수정' : '등록'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* 공통 추가 다이얼로그: 정기일정 | 일정 | 할 일 */}
-      <Dialog open={create_dialog_open} onOpenChange={set_create_dialog_open}>
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>새 일정 추가</DialogTitle>
           </DialogHeader>
 
-          <Tabs value={create_tab} onValueChange={(v) => set_create_tab(v as typeof create_tab)}>
+          <Tabs value={createTab} onValueChange={(v) => setCreateTab(v as typeof createTab)}>
             <TabsList className="grid grid-cols-3 mb-4">
               <TabsTrigger value="recurring">정기일정</TabsTrigger>
               <TabsTrigger value="event">일정</TabsTrigger>
@@ -407,8 +419,8 @@ const CalendarPage = () => {
                 <Label htmlFor="create-recurring-title">제목</Label>
                 <Input
                   id="create-recurring-title"
-                  value={recurring_title}
-                  onChange={(e) => set_recurring_title(e.target.value)}
+                  value={recurringTitle}
+                  onChange={(e) => setRecurringTitle(e.target.value)}
                   placeholder="예: 알바"
                 />
               </div>
@@ -417,14 +429,14 @@ const CalendarPage = () => {
                 <div className="flex gap-2">
                   <Input
                     type="date"
-                    value={recurring_start_date}
-                    onChange={(e) => set_recurring_start_date(e.target.value)}
+                    value={recurringStartDate}
+                    onChange={(e) => setRecurringStartDate(e.target.value)}
                   />
                   <span className="self-center text-xs text-muted-foreground">~</span>
                   <Input
                     type="date"
-                    value={recurring_end_date}
-                    onChange={(e) => set_recurring_end_date(e.target.value)}
+                    value={recurringEndDate}
+                    onChange={(e) => setRecurringEndDate(e.target.value)}
                   />
                 </div>
               </div>
@@ -440,7 +452,7 @@ const CalendarPage = () => {
                     { code: 'SAT', label: '토' },
                     { code: 'SUN', label: '일' },
                   ].map((opt) => {
-                    const active = recurring_weekdays.includes(opt.code)
+                    const active = recurringWeekdays.includes(opt.code)
                     return (
                       <Button
                         key={opt.code}
@@ -449,7 +461,7 @@ const CalendarPage = () => {
                         variant={active ? 'default' : 'outline'}
                         className={active ? 'h-7 px-2 text-xs font-semibold' : 'h-7 px-2 text-xs'}
                         onClick={() =>
-                          set_recurring_weekdays((prev) =>
+                          setRecurringWeekdays((prev) =>
                             prev.includes(opt.code)
                               ? prev.filter((c) => c !== opt.code)
                               : [...prev, opt.code],
@@ -467,14 +479,14 @@ const CalendarPage = () => {
                 <div className="flex gap-2">
                   <Input
                     type="time"
-                    value={recurring_start_time}
-                    onChange={(e) => set_recurring_start_time(e.target.value)}
+                    value={recurringStartTime}
+                    onChange={(e) => setRecurringStartTime(e.target.value)}
                   />
                   <span className="self-center text-xs text-muted-foreground">~</span>
                   <Input
                     type="time"
-                    value={recurring_end_time}
-                    onChange={(e) => set_recurring_end_time(e.target.value)}
+                    value={recurringEndTime}
+                    onChange={(e) => setRecurringEndTime(e.target.value)}
                   />
                 </div>
               </div>
@@ -482,8 +494,8 @@ const CalendarPage = () => {
                 <Label htmlFor="create-recurring-memo">메모 (선택)</Label>
                 <Textarea
                   id="create-recurring-memo"
-                  value={recurring_memo}
-                  onChange={(e) => set_recurring_memo(e.target.value)}
+                  value={recurringMemo}
+                  onChange={(e) => setRecurringMemo(e.target.value)}
                   placeholder="예: 매장 A, 주휴수당 포함 등"
                   rows={3}
                 />
@@ -493,33 +505,17 @@ const CalendarPage = () => {
                   type="button"
                   size="sm"
                   disabled={
-                    !recurring_title.trim() ||
-                    !recurring_start_date ||
-                    !recurring_end_date ||
-                    recurring_start_date > recurring_end_date ||
-                    recurring_weekdays.length === 0 ||
-                    !recurring_start_time ||
-                    !recurring_end_time ||
-                    recurring_start_time >= recurring_end_time ||
-                    create_recurring_mutation.isPending
+                    !recurringTitle.trim() ||
+                    !recurringStartDate ||
+                    !recurringEndDate ||
+                    recurringStartDate > recurringEndDate ||
+                    recurringWeekdays.length === 0 ||
+                    !recurringStartTime ||
+                    !recurringEndTime ||
+                    recurringStartTime >= recurringEndTime ||
+                    createRecurringMutation.isPending
                   }
-                  onClick={async () => {
-                    const payload = {
-                      title: recurring_title.trim(),
-                      periodStart: recurring_start_date,
-                      periodEnd: recurring_end_date,
-                      weekdays: recurring_weekdays.join(','),
-                      startTime: recurring_start_time,
-                      endTime: recurring_end_time,
-                      memo: recurring_memo.trim() || undefined,
-                    }
-
-                    await create_recurring_mutation.mutateAsync(payload, {
-                      onSuccess: () => {
-                        set_create_dialog_open(false)
-                      },
-                    })
-                  }}
+                  onClick={handleClickSaveRecurring}
                 >
                   저장
                 </Button>
@@ -532,8 +528,8 @@ const CalendarPage = () => {
                 <Label htmlFor="create-event-title">제목</Label>
                 <Input
                   id="create-event-title"
-                  value={create_event_title}
-                  onChange={(e) => set_create_event_title(e.target.value)}
+                  value={createEventTitle}
+                  onChange={(e) => setCreateEventTitle(e.target.value)}
                   placeholder="제목"
                 />
               </div>
@@ -542,8 +538,8 @@ const CalendarPage = () => {
                 <Input
                   id="create-event-start"
                   type="datetime-local"
-                  value={create_event_start_at}
-                  onChange={(e) => set_create_event_start_at(e.target.value)}
+                  value={createEventStartAt}
+                  onChange={(e) => setCreateEventStartAt(e.target.value)}
                 />
               </div>
               <div className="grid gap-2">
@@ -551,16 +547,16 @@ const CalendarPage = () => {
                 <Input
                   id="create-event-end"
                   type="datetime-local"
-                  value={create_event_end_at}
-                  onChange={(e) => set_create_event_end_at(e.target.value)}
+                  value={createEventEndAt}
+                  onChange={(e) => setCreateEventEndAt(e.target.value)}
                 />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="create-event-memo">메모 (선택)</Label>
                 <Textarea
                   id="create-event-memo"
-                  value={create_event_memo}
-                  onChange={(e) => set_create_event_memo(e.target.value)}
+                  value={createEventMemo}
+                  onChange={(e) => setCreateEventMemo(e.target.value)}
                   placeholder="메모"
                   rows={3}
                 />
@@ -570,27 +566,27 @@ const CalendarPage = () => {
                   type="button"
                   size="sm"
                   disabled={
-                    !create_event_title.trim() ||
-                    !create_event_start_at ||
-                    !create_event_end_at ||
-                    create_mutation.isPending
+                    !createEventTitle.trim() ||
+                    !createEventStartAt ||
+                    !createEventEndAt ||
+                    createMutation.isPending
                   }
                   onClick={() => {
-                    const title = create_event_title.trim()
-                    const start_at = toApiDatetime(create_event_start_at)
-                    const end_at = toApiDatetime(create_event_end_at)
-                    if (!title || !start_at || !end_at) return
+                    const title = createEventTitle.trim()
+                    const startAt = toApiDatetime(createEventStartAt)
+                    const endAt = toApiDatetime(createEventEndAt)
+                    if (!title || !startAt || !endAt) return
 
-                    create_mutation.mutate(
+                    createMutation.mutate(
                       {
                         title,
-                        startAt: start_at,
-                        endAt: end_at,
-                        memo: create_event_memo.trim() || undefined,
+                        startAt: startAt,
+                        endAt: endAt,
+                        memo: createEventMemo.trim() || undefined,
                       },
                       {
                         onSuccess: () => {
-                          set_create_dialog_open(false)
+                          setCreateDialogOpen(false)
                         },
                       },
                     )
@@ -607,8 +603,8 @@ const CalendarPage = () => {
                 <Label htmlFor="create-todo-title">제목</Label>
                 <Input
                   id="create-todo-title"
-                  value={todo_title}
-                  onChange={(e) => set_todo_title(e.target.value)}
+                  value={todoTitle}
+                  onChange={(e) => setTodoTitle(e.target.value)}
                   placeholder="예: 알고리즘 문제 3개 풀기"
                 />
               </div>
@@ -616,8 +612,8 @@ const CalendarPage = () => {
                 <Label htmlFor="create-todo-description">설명 (선택)</Label>
                 <Textarea
                   id="create-todo-description"
-                  value={todo_description}
-                  onChange={(e) => set_todo_description(e.target.value)}
+                  value={todoDescription}
+                  onChange={(e) => setTodoDescription(e.target.value)}
                   placeholder="세부 설명을 입력해 주세요."
                   rows={3}
                 />
@@ -628,8 +624,8 @@ const CalendarPage = () => {
                   id="create-todo-agent"
                   type="number"
                   min={1}
-                  value={todo_agent_role_id}
-                  onChange={(e) => set_todo_agent_role_id(e.target.value)}
+                  value={todoAgentRoleId}
+                  onChange={(e) => setTodoAgentRoleId(e.target.value)}
                 />
               </div>
               <div className="grid gap-2">
@@ -637,8 +633,8 @@ const CalendarPage = () => {
                 <Input
                   id="create-todo-order"
                   type="number"
-                  value={todo_order_index}
-                  onChange={(e) => set_todo_order_index(e.target.value)}
+                  value={todoOrderIndex}
+                  onChange={(e) => setTodoOrderIndex(e.target.value)}
                   placeholder="작은 숫자일수록 먼저 표시"
                 />
               </div>
@@ -647,26 +643,24 @@ const CalendarPage = () => {
                   type="button"
                   size="sm"
                   disabled={
-                    !todo_title.trim() ||
-                    !todo_agent_role_id.trim() ||
-                    create_todo_mutation.isPending
+                    !todoTitle.trim() || !todoAgentRoleId.trim() || createTodoMutation.isPending
                   }
                   onClick={() => {
                     const body: TodoCreateBodyInterface = {
-                      agentRoleId: Number(todo_agent_role_id),
-                      title: todo_title.trim(),
-                      description: todo_description.trim() || undefined,
-                      scheduledDate: selected_date_str,
-                      orderIndex: todo_order_index ? Number(todo_order_index) : undefined,
+                      agentRoleId: Number(todoAgentRoleId),
+                      title: todoTitle.trim(),
+                      description: todoDescription.trim() || undefined,
+                      scheduledDate: selectedDateStr,
+                      orderIndex: todoOrderIndex ? Number(todoOrderIndex) : undefined,
                     }
 
                     if (!body.agentRoleId || Number.isNaN(body.agentRoleId)) {
                       return
                     }
 
-                    create_todo_mutation.mutate(body, {
+                    createTodoMutation.mutate(body, {
                       onSuccess: () => {
-                        set_create_dialog_open(false)
+                        setCreateDialogOpen(false)
                       },
                     })
                   }}
@@ -680,8 +674,8 @@ const CalendarPage = () => {
       </Dialog>
 
       <AlertDialog
-        open={delete_target_id !== null}
-        onOpenChange={(open) => !open && set_delete_target_id(null)}
+        open={deleteTargetId !== null}
+        onOpenChange={(open) => !open && setDeleteTargetId(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -694,7 +688,7 @@ const CalendarPage = () => {
             <AlertDialogCancel>취소</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => delete_target_id !== null && confirm_delete(delete_target_id)}
+              onClick={() => deleteTargetId !== null && confirmDelete(deleteTargetId)}
             >
               삭제
             </AlertDialogAction>

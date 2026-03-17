@@ -8,41 +8,41 @@ import { useState } from 'react'
 
 const SettingsPage = () => {
   const { data, isPending } = useUserSetting()
-  const update_mutation = useUpdateUserSetting()
+  const updateUserSettingMutation = useUpdateUserSetting()
 
-  const [is_editing, set_is_editing] = useState(false)
-  const [user_name, set_user_name] = useState('')
-  const [age, set_age] = useState('')
-  const [interests, set_interests] = useState('')
-  const [intensity, set_intensity] = useState<'low' | 'medium' | 'high'>('medium')
-  const [day_start_time, set_day_start_time] = useState('07:00')
-  const [day_end_time, set_day_end_time] = useState('23:00')
+  const [isEditing, setIsEditing] = useState(false)
+  const [userName, setUserName] = useState('')
+  const [age, setAge] = useState('')
+  const [interests, setInterests] = useState('')
+  const [intensity, setIntensity] = useState<'low' | 'medium' | 'high'>('medium')
+  const [dayStartTime, setDayStartTime] = useState('07:00')
+  const [dayEndTime, setDayEndTime] = useState('23:00')
 
   const handle_start_edit = () => {
     if (!data) return
-    set_user_name(data.userName)
-    set_day_start_time((data.dayStartTime ?? '').slice(0, 5) || '07:00')
-    set_day_end_time((data.dayEndTime ?? '').slice(0, 5) || '23:00')
-    set_age(data.age != null ? String(data.age) : '')
-    set_interests(data.interests ?? '')
-    set_intensity((data.intensity as 'low' | 'medium' | 'high') ?? 'medium')
-    set_is_editing(true)
+    setUserName(data.userName)
+    setDayStartTime((data.dayStartTime ?? '').slice(0, 5) || '07:00')
+    setDayEndTime((data.dayEndTime ?? '').slice(0, 5) || '23:00')
+    setAge(data.age != null ? String(data.age) : '')
+    setInterests(data.interests ?? '')
+    setIntensity((data.intensity as 'low' | 'medium' | 'high') ?? 'medium')
+    setIsEditing(true)
   }
 
   const handle_cancel = () => {
-    set_is_editing(false)
+    setIsEditing(false)
   }
 
   const handle_submit = async () => {
-    await update_mutation.mutateAsync({
-      userName: user_name,
-      dayStartTime: day_start_time,
-      dayEndTime: day_end_time,
+    await updateUserSettingMutation.mutateAsync({
+      userName: userName,
+      dayStartTime: dayStartTime,
+      dayEndTime: dayEndTime,
       age: age ? Number(age) : undefined,
       interests: interests || undefined,
       intensity,
     })
-    set_is_editing(false)
+    setIsEditing(false)
   }
 
   if (isPending || !data) {
@@ -53,21 +53,17 @@ const SettingsPage = () => {
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
       <h1 className="text-xl font-semibold">설정</h1>
 
-      {!is_editing ? (
+      {!isEditing ? (
         <Card>
           <CardHeader>
             <h2 className="font-medium">기본 정보</h2>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
-              <span className="text-muted-foreground">이름</span> {data.userName}
+              <span className="text-muted-foreground">이름</span> {userName}
             </p>
             <p>
-              <span className="text-muted-foreground">이메일</span> {data.email}
-            </p>
-            <p>
-              <span className="text-muted-foreground">일과 시간</span>{' '}
-              {(data.dayStartTime ?? '').slice(0, 5)} ~ {(data.dayEndTime ?? '').slice(0, 5)}
+              <span className="text-muted-foreground">일과 시간</span> {dayStartTime} ~ {dayEndTime}
             </p>
             <div className="pt-2">
               <Button size="sm" onClick={handle_start_edit}>
@@ -86,8 +82,8 @@ const SettingsPage = () => {
               <Label htmlFor="setting-name">이름</Label>
               <Input
                 id="setting-name"
-                value={user_name}
-                onChange={(e) => set_user_name(e.target.value)}
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
                 placeholder="이름을 입력하세요"
               />
             </div>
@@ -100,7 +96,7 @@ const SettingsPage = () => {
                 min={1}
                 max={120}
                 value={age}
-                onChange={(e) => set_age(e.target.value)}
+                onChange={(e) => setAge(e.target.value)}
                 placeholder="예: 17"
               />
             </div>
@@ -110,7 +106,7 @@ const SettingsPage = () => {
               <Textarea
                 id="setting-interests"
                 value={interests}
-                onChange={(e) => set_interests(e.target.value)}
+                onChange={(e) => setInterests(e.target.value)}
                 placeholder="예: 의대, 수학, 피아노..."
                 rows={3}
               />
@@ -123,7 +119,7 @@ const SettingsPage = () => {
                   type="button"
                   variant={intensity === 'low' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => set_intensity('low')}
+                  onClick={() => setIntensity('low')}
                 >
                   라이트
                 </Button>
@@ -131,7 +127,7 @@ const SettingsPage = () => {
                   type="button"
                   variant={intensity === 'medium' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => set_intensity('medium')}
+                  onClick={() => setIntensity('medium')}
                 >
                   보통
                 </Button>
@@ -139,7 +135,7 @@ const SettingsPage = () => {
                   type="button"
                   variant={intensity === 'high' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => set_intensity('high')}
+                  onClick={() => setIntensity('high')}
                 >
                   하드
                 </Button>
@@ -151,14 +147,14 @@ const SettingsPage = () => {
               <div className="flex gap-2">
                 <Input
                   type="time"
-                  value={day_start_time}
-                  onChange={(e) => set_day_start_time(e.target.value)}
+                  value={dayStartTime}
+                  onChange={(e) => setDayStartTime(e.target.value)}
                 />
                 <span className="self-center text-muted-foreground text-sm">~</span>
                 <Input
                   type="time"
-                  value={day_end_time}
-                  onChange={(e) => set_day_end_time(e.target.value)}
+                  value={dayEndTime}
+                  onChange={(e) => setDayEndTime(e.target.value)}
                 />
               </div>
             </div>
@@ -171,7 +167,7 @@ const SettingsPage = () => {
                 type="button"
                 size="sm"
                 onClick={handle_submit}
-                disabled={!user_name.trim() || update_mutation.isPending}
+                disabled={!userName.trim() || updateUserSettingMutation.isPending}
               >
                 저장
               </Button>

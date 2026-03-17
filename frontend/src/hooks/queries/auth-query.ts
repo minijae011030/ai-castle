@@ -21,13 +21,13 @@ export const useLogin = (
 
   return useMutation({
     mutationFn: (body: LoginRequestInterface) => login(body),
-    onSuccess: (_data, _variables, context, mutation) => {
+    onSuccess: (data, variables, context, mutation) => {
       query_client.invalidateQueries({ queryKey: auth_query_keys.all })
-      options?.onSuccess?.(_data, _variables, context, mutation)
+      options?.onSuccess?.(data, variables, context, mutation)
     },
-    onError: (error, _variables, _context, mutation) => {
+    onError: (error, variables, context, mutation) => {
       toast.error(error.message ?? '로그인에 실패했습니다.')
-      options?.onError?.(error, _variables, _context, mutation)
+      options?.onError?.(error, variables, context, mutation)
     },
     ...options,
   })
@@ -41,13 +41,12 @@ export const useSignUp = (
 
   return useMutation({
     mutationFn: (body: SignUpRequestInterface) => signUp(body),
-    onSuccess: (_data, _variables, context, mutation) => {
+    onSuccess: () => {
       query_client.invalidateQueries({ queryKey: auth_query_keys.all })
-      options?.onSuccess?.(_data, _variables, context, mutation)
     },
-    onError: (error, _variables, _context, mutation) => {
+    onError: (error, variables, context, mutation) => {
       toast.error(error.message ?? '회원가입에 실패했습니다.')
-      options?.onError?.(error, _variables, _context, mutation)
+      options?.onError?.(error, variables, context, mutation)
     },
     ...options,
   })

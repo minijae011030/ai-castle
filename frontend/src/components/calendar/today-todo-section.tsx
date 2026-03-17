@@ -1,18 +1,19 @@
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import type { TodoItemInterface } from '@/types/todo.type'
 import { CheckCircle2Icon, CircleIcon } from 'lucide-react'
 
 interface TodayTodoSectionPropsInterface {
   todos: TodoItemInterface[]
-  is_pending: boolean
+  isPending: boolean
   /** Todo 완료 토글 클릭 시 호출되는 콜백 (서버 반영 포함) */
-  on_toggle_completed: (todo: TodoItemInterface) => void
+  onToggleCompleted: (todo: TodoItemInterface) => void
 }
 
 export const TodayTodoSection = ({
   todos,
-  is_pending,
-  on_toggle_completed,
+  isPending,
+  onToggleCompleted,
 }: TodayTodoSectionPropsInterface) => {
   const todos_by_agent = todos.reduce<Record<number, TodoItemInterface[]>>((acc, todo) => {
     const agent_id = todo.agent.id
@@ -23,7 +24,7 @@ export const TodayTodoSection = ({
 
   const agent_ids = Object.keys(todos_by_agent).map((id) => Number(id))
 
-  if (is_pending || agent_ids.length === 0) {
+  if (isPending || agent_ids.length === 0) {
     // 로딩 중이거나 할 일이 없으면 아무것도 렌더링하지 않음
     return null
   }
@@ -46,7 +47,7 @@ export const TodayTodoSection = ({
                         variant="ghost"
                         size="icon-sm"
                         aria-label="Todo 완료 토글"
-                        onClick={() => on_toggle_completed(todo)}
+                        onClick={() => onToggleCompleted(todo)}
                       >
                         {todo.status === 'DONE' ? (
                           <CheckCircle2Icon className="size-4 text-primary" />
@@ -56,11 +57,12 @@ export const TodayTodoSection = ({
                       </Button>
                       <div className="flex-1 truncate">
                         <p
-                          className={`text-xs font-medium ${
+                          className={cn(
+                            'text-xs font-medium',
                             todo.status === 'DONE'
                               ? 'text-muted-foreground line-through'
-                              : 'text-foreground'
-                          }`}
+                              : 'text-foreground',
+                          )}
                         >
                           {todo.title}
                         </p>

@@ -9,14 +9,14 @@ const SignUpPage = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [user_name, setUserName] = useState('')
-  const { mutateAsync: signUp, isPending, reset } = useSignUp()
+  const [userName, setUserName] = useState('')
+  const signUpMutation = useSignUp()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    reset()
-    await signUp({ email, password, user_name })
+    signUpMutation.reset()
+    await signUpMutation.mutateAsync({ email, password, user_name: userName })
     navigate({ to: '/login' })
   }
 
@@ -39,7 +39,7 @@ const SignUpPage = () => {
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="signup-password">비밀번호 (8자 이상)</Label>
+            <Label htmlFor="signup-password">비밀번호</Label>
             <Input
               id="signup-password"
               type="password"
@@ -57,7 +57,7 @@ const SignUpPage = () => {
             <Input
               id="signup-name"
               type="text"
-              value={user_name}
+              value={userName}
               onChange={(e) => setUserName(e.target.value)}
               placeholder="홍길동"
               required
@@ -65,17 +65,17 @@ const SignUpPage = () => {
               className="h-10"
             />
           </div>
-          <Button type="submit" disabled={isPending} className="mt-2 h-10">
-            {isPending ? '가입 중...' : '회원가입'}
+          <Button type="submit" disabled={signUpMutation.isPending} className="mt-2 h-10">
+            {signUpMutation.isPending ? '가입 중...' : '회원가입'}
           </Button>
         </form>
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          이미 계정이 있으신가요?{' '}
-          <Link to="/login" className="text-primary hover:underline">
-            로그인
-          </Link>
-        </p>
       </div>
+      <p className="mt-4 text-center text-sm text-muted-foreground">
+        이미 계정이 있으신가요?{' '}
+        <Link to="/login" className="text-primary hover:underline">
+          로그인
+        </Link>
+      </p>
     </div>
   )
 }
