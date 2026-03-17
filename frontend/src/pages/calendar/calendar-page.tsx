@@ -6,16 +6,53 @@ import {
   useSchedulesByMonth,
   useToggleScheduleDone,
   useToggleRecurringScheduleDone,
+  useCreateSchedule,
 } from '@/hooks/queries/schedule-query'
 import { format } from 'date-fns'
 import { CalendarDayCell } from '@/components/calendar/calendar-day-cell'
-import type { ScheduleOccurrenceInterface } from '@/types/schedule.type'
+import type { ScheduleOccurrenceInterface, ScheduleType } from '@/types/schedule.type'
 import { Badge } from '@/components/ui/badge'
-import { useRecurringScheduleTemplateList } from '@/hooks/queries/recurring-schedule-template-query'
+import {
+  useCreateRecurringScheduleTemplate,
+  useRecurringScheduleTemplateList,
+} from '@/hooks/queries/recurring-schedule-template-query'
 import type { RecurringScheduleTemplateInterface } from '@/types/recurring-schedule-template.type'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
 export const CalendarPage = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'recurring' | 'event' | 'todo'>('event')
+
+  // 정기일정 폼 상태
+  const [recurringTitle, setRecurringTitle] = useState('')
+  const [recurringDescription, setRecurringDescription] = useState('')
+  const [recurringStartTime, setRecurringStartTime] = useState('07:00')
+  const [recurringEndTime, setRecurringEndTime] = useState('08:00')
+  const [recurringWeekdays, setRecurringWeekdays] = useState<string[]>(['MON'])
+  const [recurringPeriodStartDate, setRecurringPeriodStartDate] = useState('')
+  const [recurringPeriodEndDate, setRecurringPeriodEndDate] = useState('')
+
+  // 일정/할일 공통 폼 상태
+  const [singleTitle, setSingleTitle] = useState('')
+  const [singleDescription, setSingleDescription] = useState('')
+  const [singleStartTime, setSingleStartTime] = useState('09:00')
+  const [singleEndTime, setSingleEndTime] = useState('10:00')
+  const [singleStartDate, setSingleStartDate] = useState('')
+  const [singleEndDate, setSingleEndDate] = useState('')
+  const [todoAgentId, setTodoAgentId] = useState<string>('')
 
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
   const { data: schedulesByDay, isPending } = useSchedulesByDay(selectedDateStr)
@@ -25,6 +62,8 @@ export const CalendarPage = () => {
   const { data: schedulesByMonth } = useSchedulesByMonth(year, month)
 
   const { data: recurringTemplates = [] } = useRecurringScheduleTemplateList()
+  const createScheduleMutation = useCreateSchedule()
+  const createRecurringTemplateMutation = useCreateRecurringScheduleTemplate()
 
   const schedulesFromTemplates: ScheduleOccurrenceInterface[] = useMemo(() => {
     if (!recurringTemplates) return []
@@ -139,6 +178,102 @@ export const CalendarPage = () => {
   const toggleScheduleDoneMutation = useToggleScheduleDone()
   const toggleRecurringDoneMutation = useToggleRecurringScheduleDone()
 
+  const resetFormState = () => {
+    setRecurringTitle('')
+    setRecurringDescription('')
+    setRecurringStartTime('07:00')
+    setRecurringEndTime('08:00')
+    setRecurringWeekdays(['MON'])
+    setRecurringPeriodStartDate('')
+    setRecurringPeriodEndDate('')
+    setSingleTitle('')
+    setSingleDescription('')
+    setSingleStartTime('09:00')
+    setSingleEndTime('10:00')
+    setSingleStartDate('')
+    setSingleEndDate('')
+    setTodoAgentId('')
+    setActiveTab('event')
+  }
+
+  const handleCreateSingleSchedule = (type: ScheduleType) => {
+    // type 에 따라 calendarEvent / todo 를 구분해서 생성
+    if (!singleTitle.trim()) {
+      // 제목 필수
+      return
+    }
+
+    // 시작/종료 날짜가 비어있으면 현재 선택된 날짜를 기본값으로 사용
+    const start_date_str = singleStartDate || selectedDateStr
+    const end_date_str = singleEndDate || singleStartDate || selectedDateStr
+
+    const start_date = new Date(start_date_str)
+    const end_date = new Date(end_date_str)
+
+    if (Number.isNaN(start_date.getTime()) || Number.isNaN(end_date.getTime())) {
+      // 날짜 파싱 실패 시 그냥 리턴
+      return
+    }
+
+    if (end_date < start_date) {
+      // 종료 날짜가 시작 날짜보다 빠르면 리턴
+      return
+    }
+
+    const agent_id =
+      type === 'TODO' && todoAgentId.trim() ? Number.parseInt(todoAgentId.trim(), 10) : undefined
+
+    // 여러 날짜 범위를 한 번에 생성
+    for (
+      let d = new Date(start_date.getFullYear(), start_date.getMonth(), start_date.getDate());
+      d <= end_date;
+      d.setDate(d.getDate() + 1)
+    ) {
+      const date_str = format(d, 'yyyy-MM-dd')
+      const start_at = `${date_str}T${singleStartTime}:00`
+      const end_at = `${date_str}T${singleEndTime}:00`
+
+      createScheduleMutation.mutate({
+        type,
+        title: singleTitle.trim(),
+        description: singleDescription.trim() || undefined,
+        occurrenceDate: date_str,
+        startAt: start_at,
+        endAt: end_at,
+        calendarEventId: type === 'CALENDAR_EVENT' ? 0 : undefined,
+        todoId: type === 'TODO' ? 0 : undefined,
+        agentId: agent_id,
+      })
+    }
+
+    setCreateDialogOpen(false)
+    resetFormState()
+  }
+
+  const handleCreateRecurringTemplate = () => {
+    if (!recurringTitle.trim()) {
+      return
+    }
+
+    const period_start = recurringPeriodStartDate || selectedDateStr
+    const period_end = recurringPeriodEndDate || selectedDateStr
+
+    const repeat_weekdays = recurringWeekdays.join(',')
+
+    createRecurringTemplateMutation.mutate({
+      title: recurringTitle.trim(),
+      description: recurringDescription.trim() || undefined,
+      periodStartDate: period_start,
+      periodEndDate: period_end,
+      repeatWeekdays: repeat_weekdays,
+      startTime: `${recurringStartTime}:00`,
+      endTime: `${recurringEndTime}:00`,
+    })
+
+    setCreateDialogOpen(false)
+    resetFormState()
+  }
+
   return (
     <div className="flex flex-col gap-4 p-4 md:flex-row md:items-start">
       {/* 왼쪽: 월별 캘린더 격자 (큰 셀, 날짜 + 일정 2줄 + +N) */}
@@ -167,9 +302,274 @@ export const CalendarPage = () => {
         />
       </div>
       <div className="min-w-0 flex-1 space-y-2">
-        <h2 className="text-sm font-semibold">
-          {format(selectedDate, 'yyyy년 M월 d일 (EEE)', { locale: ko })}
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">
+            {format(selectedDate, 'yyyy년 M월 d일 (EEE)', { locale: ko })}
+          </h2>
+          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="outline">
+                + 추가
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>스케줄 추가</DialogTitle>
+              </DialogHeader>
+              <Tabs
+                value={activeTab}
+                onValueChange={(v) => setActiveTab(v as 'recurring' | 'event' | 'todo')}
+              >
+                <TabsList className="mb-3">
+                  <TabsTrigger value="recurring">정기일정</TabsTrigger>
+                  <TabsTrigger value="event">일정</TabsTrigger>
+                  <TabsTrigger value="todo">할일</TabsTrigger>
+                </TabsList>
+                <TabsContent value="recurring" className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="recurring-title">제목</Label>
+                    <Input
+                      id="recurring-title"
+                      value={recurringTitle}
+                      onChange={(e) => setRecurringTitle(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="recurring-description">설명</Label>
+                    <Textarea
+                      id="recurring-description"
+                      value={recurringDescription}
+                      onChange={(e) => setRecurringDescription(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="recurring-start-time">시작 시간</Label>
+                      <Input
+                        id="recurring-start-time"
+                        type="time"
+                        value={recurringStartTime}
+                        onChange={(e) => setRecurringStartTime(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="recurring-end-time">종료 시간</Label>
+                      <Input
+                        id="recurring-end-time"
+                        type="time"
+                        value={recurringEndTime}
+                        onChange={(e) => setRecurringEndTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>반복 요일</Label>
+                    <div className="flex flex-wrap gap-1.5 text-xs">
+                      {[
+                        ['MON', '월'],
+                        ['TUE', '화'],
+                        ['WED', '수'],
+                        ['THU', '목'],
+                        ['FRI', '금'],
+                        ['SAT', '토'],
+                        ['SUN', '일'],
+                      ].map(([code, label]) => {
+                        const checked = recurringWeekdays.includes(code)
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            onClick={() => {
+                              setRecurringWeekdays((prev) =>
+                                prev.includes(code)
+                                  ? prev.filter((x) => x !== code)
+                                  : [...prev, code],
+                              )
+                            }}
+                            className={
+                              'rounded-full border px-2 py-0.5 ' +
+                              (checked
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background text-foreground/80')
+                            }
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="recurring-period-start">기간 시작</Label>
+                      <Input
+                        id="recurring-period-start"
+                        type="date"
+                        value={recurringPeriodStartDate}
+                        onChange={(e) => setRecurringPeriodStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="recurring-period-end">기간 종료</Label>
+                      <Input
+                        id="recurring-period-end"
+                        type="date"
+                        value={recurringPeriodEndDate}
+                        onChange={(e) => setRecurringPeriodEndDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+                <TabsContent value="event" className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="single-title-event">제목</Label>
+                    <Input
+                      id="single-title-event"
+                      value={singleTitle}
+                      onChange={(e) => setSingleTitle(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="single-description-event">설명</Label>
+                    <Textarea
+                      id="single-description-event"
+                      value={singleDescription}
+                      onChange={(e) => setSingleDescription(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="single-start-date-event">시작 날짜</Label>
+                      <Input
+                        id="single-start-date-event"
+                        type="date"
+                        value={singleStartDate || selectedDateStr}
+                        onChange={(e) => setSingleStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="single-end-date-event">종료 날짜</Label>
+                      <Input
+                        id="single-end-date-event"
+                        type="date"
+                        value={singleEndDate || singleStartDate || selectedDateStr}
+                        onChange={(e) => setSingleEndDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="single-start-time-event">시작 시간</Label>
+                      <Input
+                        id="single-start-time-event"
+                        type="time"
+                        value={singleStartTime}
+                        onChange={(e) => setSingleStartTime(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="single-end-time-event">종료 시간</Label>
+                      <Input
+                        id="single-end-time-event"
+                        type="time"
+                        value={singleEndTime}
+                        onChange={(e) => setSingleEndTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+                <TabsContent value="todo" className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="single-title-todo">제목</Label>
+                    <Input
+                      id="single-title-todo"
+                      value={singleTitle}
+                      onChange={(e) => setSingleTitle(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="single-description-todo">설명</Label>
+                    <Textarea
+                      id="single-description-todo"
+                      value={singleDescription}
+                      onChange={(e) => setSingleDescription(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="todo-agent-id">에이전트 ID (숫자)</Label>
+                    <Input
+                      id="todo-agent-id"
+                      type="number"
+                      inputMode="numeric"
+                      value={todoAgentId}
+                      onChange={(e) => setTodoAgentId(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="single-start-date-todo">시작 날짜</Label>
+                      <Input
+                        id="single-start-date-todo"
+                        type="date"
+                        value={singleStartDate || selectedDateStr}
+                        onChange={(e) => setSingleStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="single-end-date-todo">종료 날짜</Label>
+                      <Input
+                        id="single-end-date-todo"
+                        type="date"
+                        value={singleEndDate || singleStartDate || selectedDateStr}
+                        onChange={(e) => setSingleEndDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="single-start-time-todo">시작 시간</Label>
+                      <Input
+                        id="single-start-time-todo"
+                        type="time"
+                        value={singleStartTime}
+                        onChange={(e) => setSingleStartTime(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="single-end-time-todo">종료 시간</Label>
+                      <Input
+                        id="single-end-time-todo"
+                        type="time"
+                        value={singleEndTime}
+                        onChange={(e) => setSingleEndTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+              <DialogFooter>
+                {activeTab === 'recurring' && (
+                  <Button type="button" onClick={handleCreateRecurringTemplate}>
+                    정기일정 추가
+                  </Button>
+                )}
+                {activeTab === 'event' && (
+                  <Button
+                    type="button"
+                    onClick={() => handleCreateSingleSchedule('CALENDAR_EVENT')}
+                  >
+                    일정 추가
+                  </Button>
+                )}
+                {activeTab === 'todo' && (
+                  <Button type="button" onClick={() => handleCreateSingleSchedule('TODO')}>
+                    할일 추가
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
         <div className="space-y-1 text-xs">
           {isPending && <p className="text-muted-foreground">불러오는 중...</p>}
           {!isPending && schedulesForSelectedDay.length === 0 && (

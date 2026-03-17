@@ -36,6 +36,7 @@ export interface ScheduleCreateBodyInterface {
   recurringTemplateId?: number
   calendarEventId?: number
   todoId?: number
+  agentId?: number
 }
 
 export interface ScheduleUpdateBodyInterface {

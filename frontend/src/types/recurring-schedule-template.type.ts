@@ -14,3 +14,19 @@ export interface RecurringScheduleTemplateListResponseInterface {
   message: string
   data: RecurringScheduleTemplateInterface[] | null
 }
+
+export interface RecurringScheduleTemplateSingleResponseInterface {
+  status: number
+  message: string
+  data: RecurringScheduleTemplateInterface | null
+}
+
+export interface RecurringScheduleTemplateCreateBodyInterface {
+  title: string
+  description?: string
+  periodStartDate: string
+  periodEndDate: string
+  repeatWeekdays: string
+  startTime: string
+  endTime: string
+}
