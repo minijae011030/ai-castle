@@ -159,6 +159,9 @@ public class CalendarScheduleService {
     if (request.type() == ScheduleType.RECURRING_OCCURRENCE) {
       occurrence.setRecurringTemplateId(request.recurringTemplateId());
     }
+    if (request.type() == ScheduleType.TODO && request.agentId() != null) {
+      occurrence.setAgentId(request.agentId());
+    }
 
     ScheduleOccurrence saved = occurrenceRepository.save(occurrence);
     return ScheduleOccurrenceResponse.fromEntity(saved);
@@ -208,6 +211,9 @@ public class CalendarScheduleService {
               d,
               startAt,
               endAt);
+      if (request.type() == ScheduleType.TODO && request.agentId() != null) {
+        occurrence.setAgentId(request.agentId());
+      }
       entities.add(occurrence);
     }
 

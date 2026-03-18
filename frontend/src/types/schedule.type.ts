@@ -10,6 +10,7 @@ export interface ScheduleOccurrenceInterface {
   startAt: string
   endAt: string
   recurringTemplateId: number | null
+  agentId: number | null
 }
 
 export interface ScheduleOccurrenceListResponseInterface {

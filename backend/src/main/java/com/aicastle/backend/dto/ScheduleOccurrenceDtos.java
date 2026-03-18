@@ -18,7 +18,8 @@ public class ScheduleOccurrenceDtos {
       LocalDate occurrenceDate,
       LocalDateTime startAt,
       LocalDateTime endAt,
-      Long recurringTemplateId) {
+      Long recurringTemplateId,
+      Long agentId) {
 
     public static ScheduleOccurrenceResponse fromEntity(ScheduleOccurrence entity) {
       return new ScheduleOccurrenceResponse(
@@ -30,7 +31,8 @@ public class ScheduleOccurrenceDtos {
           entity.getOccurrenceDate(),
           entity.getStartAt(),
           entity.getEndAt(),
-          entity.getRecurringTemplateId());
+          entity.getRecurringTemplateId(),
+          entity.getAgentId());
     }
   }
 
@@ -42,7 +44,8 @@ public class ScheduleOccurrenceDtos {
       LocalDate occurrenceDate,
       LocalDateTime startAt,
       LocalDateTime endAt,
-      Long recurringTemplateId) {}
+      Long recurringTemplateId,
+      Long agentId) {}
 
   /** 기간 범위 스케줄 생성 요청 DTO (일정/할일용). */
   public record ScheduleRangeCreateRequest(
