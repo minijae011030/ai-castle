@@ -29,6 +29,7 @@ export const AgentListPage = () => {
 
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const sendLockRef = useRef(false)
+  const lastSentContentRef = useRef<string | null>(null)
 
   const { data: agents = [], isPending } = useAgentRoleList()
   const { data: chatMessages = [], isPending: isChatPending } = useAgentChatHistory(
@@ -38,11 +39,18 @@ export const AgentListPage = () => {
   const createMutation = useCreateAgentRole()
   const updateMutation = useUpdateAgentRole()
   const sendChatMutation = useSendAgentChatMessage(chatAgentId ?? 0, {
-    onSuccess: () => {
-      setChatInput('')
-    },
     onSettled: () => {
       sendLockRef.current = false
+    },
+    onError: () => {
+      // 전송 실패 시, 사용자가 입력한 내용을 복구 (이미 다른 입력을 시작했다면 방해하지 않음)
+      if (!chatInput.trim() && lastSentContentRef.current) {
+        setChatInput(lastSentContentRef.current)
+      }
+      lastSentContentRef.current = null
+    },
+    onSuccess: () => {
+      lastSentContentRef.current = null
     },
   })
 
@@ -111,6 +119,8 @@ export const AgentListPage = () => {
     const content = chatInput.trim()
     if (!content || sendChatMutation.isPending || sendLockRef.current) return
     sendLockRef.current = true
+    lastSentContentRef.current = content
+    setChatInput('') // 엔터/전송 즉시 입력창 비우기
     sendChatMutation.mutate({ content })
   }
 
@@ -286,7 +296,7 @@ export const AgentListPage = () => {
             <CardContent className="flex min-h-0 flex-1 flex-col gap-3 pb-3">
               <div
                 ref={chatScrollRef}
-                className="flex-1 space-y-2 overflow-auto rounded-md border bg-background p-3"
+                className="flex-1 space-y-2 overflow-auto rounded-md border bg-background p-3 max-h-[min(1000px,calc(100dvh-320px))]"
               >
                 {isChatPending ? (
                   <p className="text-xs text-muted-foreground">대화 내역을 불러오는 중입니다...</p>

@@ -121,7 +121,7 @@ export const AgentChatPage = () => {
         <CardContent className="flex min-h-0 flex-1 flex-col gap-3 pb-3">
           <div
             ref={scrollRef}
-            className="flex-1 space-y-2 overflow-auto rounded-md border bg-background p-3"
+            className="flex-1 space-y-2 overflow-auto rounded-md border bg-background p-3 max-h-[min(1000px,calc(100dvh-320px))]"
           >
             {isPending ? (
               <p className="text-xs text-muted-foreground">대화 내역을 불러오는 중입니다...</p>

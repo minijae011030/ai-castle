@@ -15,4 +15,8 @@ public class ChatDtos {
       String id, ChatMessageRole role, String content, Instant createdAt) {}
 
   public record ChatSendRequest(String content) {}
+
+  /** 커서 기반 채팅 히스토리 페이지 응답. (오래된 -> 최신 순서) */
+  public record ChatHistoryPageResponse(
+      java.util.List<ChatMessageResponse> items, Long nextBeforeId, boolean hasMore) {}
 }
