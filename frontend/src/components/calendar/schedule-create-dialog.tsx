@@ -19,10 +19,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useActiveAgentList } from '@/hooks/queries/agent-query'
-import { useCreateSchedule } from '@/hooks/queries/schedule-query'
+import { useCreateSchedule, useCreateScheduleRange } from '@/hooks/queries/schedule-query'
 import { useCreateRecurringScheduleTemplate } from '@/hooks/queries/recurring-schedule-template-query'
 import type { ScheduleType } from '@/types/schedule.type'
-import { format } from 'date-fns'
 import { useForm, useController } from 'react-hook-form'
 import { useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
@@ -63,6 +62,7 @@ export const ScheduleCreateDialog = ({
 }: ScheduleCreateDialogProps) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('event')
   const createScheduleMutation = useCreateSchedule()
+  const createScheduleRangeMutation = useCreateScheduleRange()
   const createRecurringTemplateMutation = useCreateRecurringScheduleTemplate()
   const { data: activeAgents = [], isPending: isActiveAgentsPending } = useActiveAgentList()
 
@@ -175,33 +175,35 @@ export const ScheduleCreateDialog = ({
     const start_date_str = values.singleStartDate || selectedDateStr
     const end_date_str = values.singleEndDate || values.singleStartDate || selectedDateStr
 
-    const start_date = new Date(start_date_str)
-    const end_date = new Date(end_date_str)
-
-    if (Number.isNaN(start_date.getTime()) || Number.isNaN(end_date.getTime())) return
-    if (end_date < start_date) return
-
     const agent_id =
       type === 'TODO' && values.todoAgentId.trim()
         ? Number.parseInt(values.todoAgentId.trim(), 10)
         : undefined
 
-    for (
-      let d = new Date(start_date.getFullYear(), start_date.getMonth(), start_date.getDate());
-      d <= end_date;
-      d.setDate(d.getDate() + 1)
-    ) {
-      const date_str = format(d, 'yyyy-MM-dd')
-      const start_at = `${date_str}T${values.singleStartTime}:00`
-      const end_at = `${date_str}T${values.singleEndTime}:00`
+    // 단일 날짜면 기존 단일 생성 API 사용, 기간이면 range API 사용(한 번의 요청)
+    if (start_date_str === end_date_str) {
+      const start_at = `${start_date_str}T${values.singleStartTime}:00`
+      const end_at = `${end_date_str}T${values.singleEndTime}:00`
 
       createScheduleMutation.mutate({
         type,
         title: values.singleTitle.trim(),
         description: values.singleDescription.trim() || undefined,
-        occurrenceDate: date_str,
+        occurrenceDate: start_date_str,
         startAt: start_at,
         endAt: end_at,
+        agentId: agent_id,
+      })
+    } else {
+      if (type === 'RECURRING_OCCURRENCE') return
+      createScheduleRangeMutation.mutate({
+        type: type as 'CALENDAR_EVENT' | 'TODO',
+        title: values.singleTitle.trim(),
+        description: values.singleDescription.trim() || undefined,
+        startDate: start_date_str,
+        endDate: end_date_str,
+        startTime: `${values.singleStartTime}:00`,
+        endTime: `${values.singleEndTime}:00`,
         agentId: agent_id,
       })
     }

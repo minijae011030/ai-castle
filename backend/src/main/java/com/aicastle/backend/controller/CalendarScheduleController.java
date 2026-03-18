@@ -3,6 +3,7 @@ package com.aicastle.backend.controller;
 import com.aicastle.backend.dto.ResultResponse;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleCreateRequest;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleOccurrenceResponse;
+import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleRangeCreateRequest;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleUpdateRequest;
 import com.aicastle.backend.service.CalendarScheduleService;
 import java.time.LocalDate;
@@ -64,6 +65,15 @@ public class CalendarScheduleController {
       @RequestBody ScheduleCreateRequest request) {
     Long userId = getUserId();
     ScheduleOccurrenceResponse data = calendarScheduleService.create(userId, request);
+    return ResponseEntity.ok(ResultResponse.success("스케줄이 생성되었습니다.", data));
+  }
+
+  /** 기간 범위 스케줄 생성 (일정/할일). */
+  @PostMapping("/range")
+  public ResponseEntity<ResultResponse<List<ScheduleOccurrenceResponse>>> createRange(
+      @RequestBody ScheduleRangeCreateRequest request) {
+    Long userId = getUserId();
+    List<ScheduleOccurrenceResponse> data = calendarScheduleService.createRange(userId, request);
     return ResponseEntity.ok(ResultResponse.success("스케줄이 생성되었습니다.", data));
   }
 

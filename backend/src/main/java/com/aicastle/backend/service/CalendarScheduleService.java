@@ -12,7 +12,9 @@ import com.aicastle.backend.repository.ScheduleOccurrenceRepository;
 import com.aicastle.backend.repository.UserAccountRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -160,6 +162,57 @@ public class CalendarScheduleService {
 
     ScheduleOccurrence saved = occurrenceRepository.save(occurrence);
     return ScheduleOccurrenceResponse.fromEntity(saved);
+  }
+
+  @Transactional
+  public List<ScheduleOccurrenceResponse> createRange(
+      Long userId,
+      com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleRangeCreateRequest request) {
+    if (request.type() == null) {
+      throw new IllegalArgumentException("type 은 필수입니다.");
+    }
+    if (request.type() == ScheduleType.RECURRING_OCCURRENCE) {
+      throw new IllegalArgumentException("정기 일정은 기간 생성 API를 사용할 수 없습니다.");
+    }
+    if (request.title() == null || request.title().isBlank()) {
+      throw new IllegalArgumentException("제목은 비어 있을 수 없습니다.");
+    }
+    if (request.startDate() == null || request.endDate() == null) {
+      throw new IllegalArgumentException("startDate / endDate 는 필수입니다.");
+    }
+    if (request.endDate().isBefore(request.startDate())) {
+      throw new IllegalArgumentException("endDate 는 startDate 이후여야 합니다.");
+    }
+    LocalTime startTime = request.startTime() != null ? request.startTime() : LocalTime.of(9, 0);
+    LocalTime endTime = request.endTime() != null ? request.endTime() : LocalTime.of(10, 0);
+    if (!endTime.isAfter(startTime)) {
+      throw new IllegalArgumentException("endTime 은 startTime 이후여야 합니다.");
+    }
+
+    UserAccount user =
+        userAccountRepository
+            .findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+    List<ScheduleOccurrence> entities = new ArrayList<>();
+    for (LocalDate d = request.startDate(); !d.isAfter(request.endDate()); d = d.plusDays(1)) {
+      LocalDateTime startAt = LocalDateTime.of(d, startTime);
+      LocalDateTime endAt = LocalDateTime.of(d, endTime);
+
+      ScheduleOccurrence occurrence =
+          new ScheduleOccurrence(
+              user,
+              request.type(),
+              request.title().trim(),
+              request.description() != null ? request.description().trim() : null,
+              d,
+              startAt,
+              endAt);
+      entities.add(occurrence);
+    }
+
+    List<ScheduleOccurrence> saved = occurrenceRepository.saveAll(entities);
+    return saved.stream().map(ScheduleOccurrenceResponse::fromEntity).collect(Collectors.toList());
   }
 
   @Transactional

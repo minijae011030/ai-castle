@@ -24,6 +24,12 @@ export interface ScheduleOccurrenceSingleResponseInterface {
   data: ScheduleOccurrenceInterface | null
 }
 
+export interface ScheduleOccurrenceRangeResponseInterface {
+  status: number
+  message: string
+  data: ScheduleOccurrenceInterface[] | null
+}
+
 export interface ScheduleCreateBodyInterface {
   type: ScheduleType
   title: string
@@ -32,6 +38,17 @@ export interface ScheduleCreateBodyInterface {
   startAt: string
   endAt: string
   recurringTemplateId?: number
+  agentId?: number
+}
+
+export interface ScheduleRangeCreateBodyInterface {
+  type: Exclude<ScheduleType, 'RECURRING_OCCURRENCE'>
+  title: string
+  description?: string
+  startDate: string
+  endDate: string
+  startTime: string
+  endTime: string
   agentId?: number
 }
 

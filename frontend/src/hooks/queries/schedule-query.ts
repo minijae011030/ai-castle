@@ -1,5 +1,6 @@
 import {
   createSchedule,
+  createScheduleRange,
   deleteSchedule,
   getSchedulesByDay,
   getSchedulesByMonth,
@@ -10,6 +11,7 @@ import {
 import type {
   ScheduleCreateBodyInterface,
   ScheduleOccurrenceInterface,
+  ScheduleRangeCreateBodyInterface,
   ScheduleUpdateBodyInterface,
 } from '@/types/schedule.type'
 import {
@@ -75,6 +77,31 @@ export const useCreateSchedule = (
     mutationFn: (body: ScheduleCreateBodyInterface) => createSchedule(body),
     onSuccess: (data, variables, context, mutation) => {
       // 날짜/월 단위 쿼리는 상황에 따라 invalidate
+      query_client.invalidateQueries({ queryKey: schedule_query_keys.all })
+      toast.success('스케줄이 생성되었습니다.')
+      options?.onSuccess?.(data, variables, context, mutation)
+    },
+    onError: (error, variables, context, mutation) => {
+      toast.error(error.message ?? '스케줄 생성에 실패했습니다.')
+      options?.onError?.(error, variables, context, mutation)
+    },
+    ...options,
+  })
+}
+
+// 스케줄 기간 생성 훅 (일정/할일) - 한 번의 요청으로 여러 날짜 생성
+export const useCreateScheduleRange = (
+  options?: UseMutationOptions<
+    ScheduleOccurrenceInterface[],
+    Error,
+    ScheduleRangeCreateBodyInterface
+  >,
+) => {
+  const query_client = useQueryClient()
+
+  return useMutation({
+    mutationFn: (body: ScheduleRangeCreateBodyInterface) => createScheduleRange(body),
+    onSuccess: (data, variables, context, mutation) => {
       query_client.invalidateQueries({ queryKey: schedule_query_keys.all })
       toast.success('스케줄이 생성되었습니다.')
       options?.onSuccess?.(data, variables, context, mutation)

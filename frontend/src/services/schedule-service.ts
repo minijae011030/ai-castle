@@ -3,7 +3,9 @@ import type {
   ScheduleCreateBodyInterface,
   ScheduleOccurrenceInterface,
   ScheduleOccurrenceListResponseInterface,
+  ScheduleOccurrenceRangeResponseInterface,
   ScheduleOccurrenceSingleResponseInterface,
+  ScheduleRangeCreateBodyInterface,
   ScheduleUpdateBodyInterface,
 } from '@/types/schedule.type'
 
@@ -44,6 +46,20 @@ export async function createSchedule(
   )
   if (res.status !== 200 || !res.data) {
     throw new Error(res.message ?? '스케줄 생성에 실패했습니다.')
+  }
+  return res.data
+}
+
+// 스케줄 기간 생성 (일정/할일) - 한 번의 API로 여러 날짜 생성
+export async function createScheduleRange(
+  body: ScheduleRangeCreateBodyInterface,
+): Promise<ScheduleOccurrenceInterface[]> {
+  const res = await API.post<ScheduleOccurrenceRangeResponseInterface>(
+    '/api/calendar/schedules/range',
+    body,
+  )
+  if (res.status !== 200 || !res.data) {
+    throw new Error(res.message ?? '스케줄 기간 생성에 실패했습니다.')
   }
   return res.data
 }

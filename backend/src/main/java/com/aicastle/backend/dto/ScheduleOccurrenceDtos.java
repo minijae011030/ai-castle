@@ -44,6 +44,17 @@ public class ScheduleOccurrenceDtos {
       LocalDateTime endAt,
       Long recurringTemplateId) {}
 
+  /** 기간 범위 스케줄 생성 요청 DTO (일정/할일용). */
+  public record ScheduleRangeCreateRequest(
+      ScheduleType type,
+      String title,
+      String description,
+      LocalDate startDate,
+      LocalDate endDate,
+      java.time.LocalTime startTime,
+      java.time.LocalTime endTime,
+      Long agentId) {}
+
   /** 부분 수정 요청 DTO. */
   public record ScheduleUpdateRequest(
       String title, String description, Boolean done, LocalDateTime startAt, LocalDateTime endAt) {}
