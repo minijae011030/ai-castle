@@ -32,3 +32,14 @@ export interface AgentRoleUpdateResponseInterface {
   message: string
   data: AgentRoleDataInterface | null
 }
+
+export interface ActiveAgentDataInterface {
+  id: number
+  name: string
+}
+
+export interface ActiveAgentListResponseInterface {
+  status: number
+  message: string
+  data: ActiveAgentDataInterface[] | null
+}

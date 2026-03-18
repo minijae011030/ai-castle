@@ -1,8 +1,14 @@
-import { createAgentRole, getAgentRoleList, updateAgentRole } from '@/services/agent-service'
+import {
+  createAgentRole,
+  getActiveAgentList,
+  getAgentRoleList,
+  updateAgentRole,
+} from '@/services/agent-service'
 import type {
   AgentRoleCreateBodyInterface,
   AgentRoleDataInterface,
   AgentRoleUpdateBodyInterface,
+  ActiveAgentDataInterface,
 } from '@/types/agent.type'
 import {
   useMutation,
@@ -18,6 +24,7 @@ import { toast } from 'sonner'
 export const agent_query_keys = {
   all: ['agent'] as const,
   list: () => [...agent_query_keys.all, 'list'] as const,
+  active_list: () => [...agent_query_keys.all, 'active_list'] as const,
 }
 
 // 에이전트 롤 목록 조회 훅
@@ -29,6 +36,21 @@ export const useAgentRoleList = (options?: UseQueryOptions<AgentRoleDataInterfac
       return res
     },
     select: useCallback((data: AgentRoleDataInterface[]) => data, []),
+    ...options,
+  })
+}
+
+// 활성 에이전트 목록 조회 훅 (id + name)
+export const useActiveAgentList = (
+  options?: UseQueryOptions<ActiveAgentDataInterface[], Error>,
+) => {
+  return useQuery({
+    queryKey: agent_query_keys.active_list(),
+    queryFn: async () => {
+      const res = await getActiveAgentList()
+      return res
+    },
+    select: useCallback((data: ActiveAgentDataInterface[]) => data, []),
     ...options,
   })
 }

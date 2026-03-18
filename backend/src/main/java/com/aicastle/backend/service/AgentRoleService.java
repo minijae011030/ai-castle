@@ -1,9 +1,11 @@
 package com.aicastle.backend.service;
 
+import com.aicastle.backend.dto.AgentRoleDtos.ActiveAgentResponse;
 import com.aicastle.backend.dto.AgentRoleDtos.AgentRoleCreateRequest;
 import com.aicastle.backend.dto.AgentRoleDtos.AgentRoleResponse;
 import com.aicastle.backend.dto.AgentRoleDtos.AgentRoleUpdateRequest;
 import com.aicastle.backend.entity.AgentRole;
+import com.aicastle.backend.entity.AgentRoleType;
 import com.aicastle.backend.repository.AgentRoleRepository;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,6 +26,14 @@ public class AgentRoleService {
   public List<AgentRoleResponse> findAll() {
     return agentRoleRepository.findAll().stream()
         .map(AgentRoleResponse::fromEntity)
+        .collect(Collectors.toList());
+  }
+
+  @Transactional(readOnly = true)
+  public List<ActiveAgentResponse> findActiveAgents() {
+    // 현재 "활성 에이전트" = 서브(과목 선생님) 역할로 정의
+    return agentRoleRepository.findByRoleType(AgentRoleType.SUB).stream()
+        .map(ActiveAgentResponse::fromEntity)
         .collect(Collectors.toList());
   }
 

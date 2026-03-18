@@ -9,8 +9,16 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { useActiveAgentList } from '@/hooks/queries/agent-query'
 import { useCreateSchedule } from '@/hooks/queries/schedule-query'
 import { useCreateRecurringScheduleTemplate } from '@/hooks/queries/recurring-schedule-template-query'
 import type { ScheduleType } from '@/types/schedule.type'
@@ -56,6 +64,7 @@ export const ScheduleCreateDialog = ({
   const [activeTab, setActiveTab] = useState<ActiveTab>('event')
   const createScheduleMutation = useCreateSchedule()
   const createRecurringTemplateMutation = useCreateRecurringScheduleTemplate()
+  const { data: activeAgents = [], isPending: isActiveAgentsPending } = useActiveAgentList()
 
   const { control, handleSubmit, reset } = useForm<ScheduleCreateFormValues>({
     defaultValues: {
@@ -337,8 +346,25 @@ export const ScheduleCreateDialog = ({
               <Textarea id="single-description-todo" {...singleDescriptionField} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="todo-agent-id">에이전트 ID (숫자)</Label>
-              <Input id="todo-agent-id" type="number" inputMode="numeric" {...todoAgentIdField} />
+              <Label htmlFor="todo-agent-id">에이전트</Label>
+              <Select
+                value={todoAgentIdField.value ?? ''}
+                onValueChange={(v) => todoAgentIdField.onChange(v === '__none__' ? '' : v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={isActiveAgentsPending ? '불러오는 중...' : '에이전트를 선택하세요'}
+                  />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  <SelectItem value="__none__">선택 안함</SelectItem>
+                  {activeAgents.map((a) => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">

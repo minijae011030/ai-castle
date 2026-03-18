@@ -18,4 +18,12 @@ public class AgentRoleDtos {
   public record AgentRoleCreateRequest(String name, AgentRoleType roleType, String systemPrompt) {}
 
   public record AgentRoleUpdateRequest(String systemPrompt) {}
+
+  /** UI 선택용 간단 목록 DTO (id + name). */
+  public record ActiveAgentResponse(Long id, String name) {
+
+    public static ActiveAgentResponse fromEntity(AgentRole entity) {
+      return new ActiveAgentResponse(entity.getId(), entity.getName());
+    }
+  }
 }

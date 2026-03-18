@@ -1,5 +1,6 @@
 package com.aicastle.backend.controller;
 
+import com.aicastle.backend.dto.AgentRoleDtos.ActiveAgentResponse;
 import com.aicastle.backend.dto.AgentRoleDtos.AgentRoleCreateRequest;
 import com.aicastle.backend.dto.AgentRoleDtos.AgentRoleResponse;
 import com.aicastle.backend.dto.AgentRoleDtos.AgentRoleUpdateRequest;
@@ -30,6 +31,12 @@ public class AgentRoleController {
   @GetMapping
   public ResponseEntity<ResultResponse<List<AgentRoleResponse>>> list() {
     List<AgentRoleResponse> data = agentRoleService.findAll();
+    return ResponseEntity.ok(ResultResponse.success(data));
+  }
+
+  @GetMapping("/active")
+  public ResponseEntity<ResultResponse<List<ActiveAgentResponse>>> activeList() {
+    List<ActiveAgentResponse> data = agentRoleService.findActiveAgents();
     return ResponseEntity.ok(ResultResponse.success(data));
   }
 

@@ -6,6 +6,8 @@ import type {
   AgentRoleListResponseInterface,
   AgentRoleUpdateBodyInterface,
   AgentRoleUpdateResponseInterface,
+  ActiveAgentDataInterface,
+  ActiveAgentListResponseInterface,
 } from '@/types/agent.type'
 
 const BASE = '/api/agents'
@@ -46,6 +48,16 @@ export async function updateAgentRole(
 
   if (res.status !== 200 || !res.data) {
     throw new Error(res.message ?? '에이전트를 수정하지 못했습니다.')
+  }
+
+  return res.data
+}
+
+export async function getActiveAgentList(): Promise<ActiveAgentDataInterface[]> {
+  const res = await API.get<ActiveAgentListResponseInterface>(`${BASE}/active`)
+
+  if (res.status !== 200 || !res.data) {
+    throw new Error(res.message ?? '활성 에이전트 목록을 불러오지 못했습니다.')
   }
 
   return res.data
