@@ -109,26 +109,48 @@ export const useSendAgentChatMessage = (
       ])
 
       const ctx = { previous }
-      await options?.onMutate?.(variables)
+      // 유저 옵션 콜백은 내부 처리 이후 호출(시그니처는 버전에 따라 달라질 수 있어 안전하게 처리)
+      await (options?.onMutate as unknown as (v: AgentChatSendBodyInterface) => unknown)?.(
+        variables,
+      )
       return ctx
     },
-    onSuccess: (data, variables, context, mutation) => {
+    onSuccess: (data, variables, context) => {
       query_client.setQueryData<ChatMessageInterface[]>(chat_query_keys.agent(agent_id), (old) => [
         ...(old ?? []),
         data,
       ])
       query_client.invalidateQueries({ queryKey: chat_query_keys.agent(agent_id) })
-      options?.onSuccess?.(data, variables, context, mutation)
+      ;(
+        options?.onSuccess as unknown as (
+          d: ChatMessageInterface,
+          v: AgentChatSendBodyInterface,
+          c: unknown,
+        ) => unknown
+      )?.(data, variables, context)
     },
-    onError: (error, variables, context, mutation) => {
+    onError: (error, variables, context) => {
       if (context?.previous) {
         query_client.setQueryData(chat_query_keys.agent(agent_id), context.previous)
       }
       toast.error(error.message ?? '메시지 전송에 실패했습니다.')
-      options?.onError?.(error, variables, context, mutation)
+      ;(
+        options?.onError as unknown as (
+          e: Error,
+          v: AgentChatSendBodyInterface,
+          c: unknown,
+        ) => unknown
+      )?.(error, variables, context)
     },
     onSettled: (data, error, variables, context) => {
-      options?.onSettled?.(data, error, variables, context)
+      ;(
+        options?.onSettled as unknown as (
+          d: ChatMessageInterface | undefined,
+          e: Error | null,
+          v: AgentChatSendBodyInterface,
+          c: unknown,
+        ) => unknown
+      )?.(data, error, variables, context)
     },
   })
 }

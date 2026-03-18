@@ -96,9 +96,24 @@ public class AgentChatService {
             + agent.getName()
             + ")다. 한국어로 간결하고 실행 가능하게 답하라.";
 
+    String wrappedUserContent =
+        """
+        너는 "%s" 역할을 가진 에이전트다.
+        너는 사용자를 도와야 하며, 아래 규칙을 반드시 따른다.
+
+        [에이전트 규칙]
+        %s
+
+        [사용자 프롬프트]
+        {
+        %s
+        }
+        """
+            .formatted(agent.getName(), agent.getSystemPrompt(), content);
+
     String reply;
     try {
-      reply = openAiClient.createChatCompletion(systemPrompt, content);
+      reply = openAiClient.createChatCompletion(systemPrompt, wrappedUserContent);
     } catch (Exception e) {
       throw new IllegalStateException("OpenAI 호출에 실패했습니다. " + e.getMessage());
     }

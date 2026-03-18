@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import type { AgentRoleDataInterface } from '@/types/agent.type'
 import type { ChatMessageInterface } from '@/types/chat.type'
 import { useEffect, useRef, useState } from 'react'
+import { MarkdownMessage } from '@/components/chat/markdown-message'
 
 const emptyForm = {
   name: '',
@@ -143,7 +144,11 @@ export const AgentListPage = () => {
                 : 'bg-secondary text-secondary-foreground',
           )}
         >
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          {is_user ? (
+            <div className="whitespace-pre-wrap wrap-break-word">{message.content}</div>
+          ) : (
+            <MarkdownMessage content={message.content} />
+          )}
         </div>
       </div>
     )
@@ -235,7 +240,7 @@ export const AgentListPage = () => {
                 <Textarea
                   id="agent-system-prompt"
                   value={form.systemPrompt}
-                  onChange={(e) => setForm((prev) => ({ ...prev, system_prompt: e.target.value }))}
+                  onChange={(e) => setForm((prev) => ({ ...prev, systemPrompt: e.target.value }))}
                   placeholder="이 에이전트가 어떤 역할/말투/전략으로 답할지 작성해 주세요."
                   rows={10}
                 />

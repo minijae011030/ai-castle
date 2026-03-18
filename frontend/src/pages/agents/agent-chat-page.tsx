@@ -8,6 +8,7 @@ import { useRouter } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Route } from '@/routes/_protected/agents/$agentId.chat'
 import { cn } from '@/lib/utils'
+import { MarkdownMessage } from '@/components/chat/markdown-message'
 
 export const AgentChatPage = () => {
   const params = Route.useParams()
@@ -80,7 +81,11 @@ export const AgentChatPage = () => {
                 : 'bg-secondary text-secondary-foreground',
           )}
         >
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          {isUser ? (
+            <div className="whitespace-pre-wrap wrap-break-word">{message.content}</div>
+          ) : (
+            <MarkdownMessage content={message.content} />
+          )}
         </div>
       </div>
     )
