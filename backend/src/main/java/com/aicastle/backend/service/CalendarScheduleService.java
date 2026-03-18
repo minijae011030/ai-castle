@@ -308,6 +308,8 @@ public class CalendarScheduleService {
             + occurrence.getEndAt();
 
     return agentChatService.sendMessage(
-        userId, occurrence.getAgentId(), new ChatSendRequest(content));
+        userId,
+        occurrence.getAgentId(),
+        new ChatSendRequest(content, com.aicastle.backend.dto.ChatDtos.ChatMode.TODO));
   }
 }

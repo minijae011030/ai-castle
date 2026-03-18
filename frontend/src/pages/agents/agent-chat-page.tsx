@@ -1,5 +1,12 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
 import { useAgentRoleList } from '@/hooks/queries/agent-query'
@@ -27,6 +34,7 @@ export const AgentChatPage = () => {
 
   const agent = useMemo(() => agents.find((a) => a.id === agentId) ?? null, [agents, agentId])
   const [inputValue, setInputValue] = useState('')
+  const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const sendLockRef = useRef(false)
   const keepScrollOffsetRef = useRef<{ top: number; height: number } | null>(null)
@@ -91,7 +99,7 @@ export const AgentChatPage = () => {
 
     setInputValue('')
     sendLockRef.current = true
-    sendMutation.mutate({ content })
+    sendMutation.mutate({ content, mode: chatMode })
   }
 
   // 채팅 입력창 엔터키 누르면 전송 핸들러
@@ -183,7 +191,16 @@ export const AgentChatPage = () => {
               rows={3}
               placeholder="메시지를 입력하세요. (Shift+Enter 줄바꿈, Enter 전송)"
             />
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between gap-2">
+              <Select value={chatMode} onValueChange={(v) => setChatMode(v as 'CHAT' | 'TODO')}>
+                <SelectTrigger size="sm" className="min-w-24">
+                  <SelectValue placeholder="모드" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CHAT">대화</SelectItem>
+                  <SelectItem value="TODO">투두</SelectItem>
+                </SelectContent>
+              </Select>
               <Button
                 type="button"
                 size="sm"

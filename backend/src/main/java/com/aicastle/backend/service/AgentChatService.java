@@ -3,6 +3,7 @@ package com.aicastle.backend.service;
 import com.aicastle.backend.dto.ChatDtos.ChatHistoryPageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatMessageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatMessageRole;
+import com.aicastle.backend.dto.ChatDtos.ChatMode;
 import com.aicastle.backend.dto.ChatDtos.ChatSendRequest;
 import com.aicastle.backend.entity.AgentRole;
 import com.aicastle.backend.entity.AgentRoleType;
@@ -153,6 +154,12 @@ public class AgentChatService {
     chatMessageRepository.save(new ChatMessage(user, agent, ChatMessage.Role.USER, content));
 
     String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
+    ChatMode mode = request.mode() == null ? ChatMode.CHAT : request.mode();
+    String modePrompt =
+        mode == ChatMode.TODO
+            ? "\n\n[모드: TODO]\n- 사용자의 요청을 실행 가능한 TODO 체크리스트로 변환해라.\n- 마크다운으로 답하라.\n- 각 항목은 짧고 측정 가능해야 한다.\n"
+            : "\n\n[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
+
     String systemPrompt =
         agent.getSystemPrompt()
             + "\n\n"
@@ -160,7 +167,8 @@ public class AgentChatService {
             + roleLabel
             + " 에이전트("
             + agent.getName()
-            + ")다. 한국어로 간결하고 실행 가능하게 답하라.";
+            + ")다. 한국어로 간결하고 실행 가능하게 답하라."
+            + modePrompt;
 
     String reply;
     try {

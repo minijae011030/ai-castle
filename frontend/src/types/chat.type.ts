@@ -37,6 +37,7 @@ export interface AgentChatHistoryPageDataInterface {
 
 export interface AgentChatSendBodyInterface {
   content: string
+  mode?: 'CHAT' | 'TODO'
 }
 
 export interface AgentChatSendResponseInterface {

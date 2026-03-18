@@ -2,6 +2,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
   useAgentRoleList,
@@ -26,6 +33,7 @@ export const AgentListPage = () => {
   const [form, setForm] = useState(emptyForm)
   const [chatAgentId, setChatAgentId] = useState<number | null>(null)
   const [chatInput, setChatInput] = useState('')
+  const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
 
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const sendLockRef = useRef(false)
@@ -33,17 +41,22 @@ export const AgentListPage = () => {
   const keepScrollOffsetRef = useRef<{ top: number; height: number } | null>(null)
 
   const { data: agents = [], isPending } = useAgentRoleList()
+
+  // 초기 진입 시에는 state를 effect로 세팅하지 않고, 파생값으로 "첫 에이전트 채팅"을 기본으로 보여준다.
+  const effectiveChatAgentId = chatAgentId ?? agents[0]?.id ?? null
+  const effectiveSelectedAgentId = selectedAgentId ?? effectiveChatAgentId
+
   const {
     data: chatPages,
     isPending: isChatPending,
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
-  } = useInfiniteAgentChatHistory(chatAgentId ?? 0)
+  } = useInfiniteAgentChatHistory(effectiveChatAgentId ?? 0)
 
   const createMutation = useCreateAgentRole()
   const updateMutation = useUpdateAgentRole()
-  const sendChatMutation = useSendAgentChatMessage(chatAgentId ?? 0, {
+  const sendChatMutation = useSendAgentChatMessage(effectiveChatAgentId ?? 0, {
     onSettled: () => {
       sendLockRef.current = false
     },
@@ -152,13 +165,13 @@ export const AgentListPage = () => {
 
   // 채팅 전송 버튼 클릭 핸들러
   const handleSendChat = () => {
-    if (chatAgentId === null) return
+    if (effectiveChatAgentId === null) return
     const content = chatInput.trim()
     if (!content || sendChatMutation.isPending || sendLockRef.current) return
     sendLockRef.current = true
     lastSentContentRef.current = content
     setChatInput('') // 엔터/전송 즉시 입력창 비우기
-    sendChatMutation.mutate({ content })
+    sendChatMutation.mutate({ content, mode: chatMode })
   }
 
   // 채팅 입력창 엔터키 누르면 전송 핸들러
@@ -220,7 +233,7 @@ export const AgentListPage = () => {
           ) : (
             <ul className="divide-y">
               {agents.map((agent) => {
-                const is_active = selectedAgentId === agent.id
+                const is_active = effectiveSelectedAgentId === agent.id
                 return (
                   <li key={agent.id}>
                     <div
@@ -241,7 +254,7 @@ export const AgentListPage = () => {
       </div>
 
       <div className="flex min-w-0 flex-1">
-        {chatAgentId === null ? (
+        {effectiveChatAgentId === null ? (
           <Card className="w-full max-w-2xl">
             <CardHeader>
               <h2 className="text-sm font-semibold">
@@ -308,27 +321,29 @@ export const AgentListPage = () => {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <h2 className="text-sm font-semibold">
-                  {agents.find((a) => a.id === chatAgentId)?.name ?? '에이전트 대화'}
+                  {agents.find((a) => a.id === effectiveChatAgentId)?.name ?? '에이전트 대화'}
                 </h2>
                 <p className="text-xs text-muted-foreground">
                   선택한 에이전트와 개별적으로 대화할 수 있습니다.
                 </p>
               </div>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                onClick={() => {
-                  const target = agents.find((a) => a.id === chatAgentId) ?? null
-                  if (target) {
-                    handleSelectAgentForSettings(target)
-                  } else {
-                    setChatAgentId(null)
-                  }
-                }}
-              >
-                에이전트 설정
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  onClick={() => {
+                    const target = agents.find((a) => a.id === effectiveChatAgentId) ?? null
+                    if (target) {
+                      handleSelectAgentForSettings(target)
+                    } else {
+                      setChatAgentId(null)
+                    }
+                  }}
+                >
+                  에이전트 설정
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col gap-3 pb-3">
               <div
@@ -354,7 +369,16 @@ export const AgentListPage = () => {
                   rows={3}
                   placeholder="메시지를 입력하세요. (Shift+Enter 줄바꿈, Enter 전송)"
                 />
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between gap-2">
+                  <Select value={chatMode} onValueChange={(v) => setChatMode(v as 'CHAT' | 'TODO')}>
+                    <SelectTrigger size="sm" className="min-w-24">
+                      <SelectValue placeholder="모드" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CHAT">Chat</SelectItem>
+                      <SelectItem value="TODO">Todo</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Button
                     type="button"
                     size="sm"
