@@ -10,11 +10,8 @@ import type {
   MainChatSendResponseInterface,
 } from '@/types/chat.type'
 
-const MAIN_BASE = '/api/chat/main'
-const AGENT_BASE = '/api/chat/agents'
-
 export async function getMainChatHistory(): Promise<ChatMessageInterface[]> {
-  const res = await API.get<MainChatHistoryResponseInterface>(MAIN_BASE)
+  const res = await API.get<MainChatHistoryResponseInterface>('/api/chat/main')
 
   if (res.status !== 200 || !res.data) {
     throw new Error(res.message ?? '메인 에이전트 대화 내역을 불러오지 못했습니다.')
@@ -27,7 +24,7 @@ export async function sendMainChatMessage(
   body: MainChatSendBodyInterface,
 ): Promise<ChatMessageInterface> {
   const res = await API.post<MainChatSendResponseInterface, MainChatSendBodyInterface>(
-    MAIN_BASE,
+    '/api/chat/main',
     body,
   )
 
@@ -39,7 +36,7 @@ export async function sendMainChatMessage(
 }
 
 export async function getAgentChatHistory(agent_id: number): Promise<ChatMessageInterface[]> {
-  const res = await API.get<AgentChatHistoryResponseInterface>(`${AGENT_BASE}/${agent_id}`, {
+  const res = await API.get<AgentChatHistoryResponseInterface>(`/api/chat/agents/${agent_id}`, {
     params: { limit: 15 },
   })
 
@@ -55,12 +52,15 @@ export async function getAgentChatHistoryPage(params: {
   beforeId?: number | null
   limit?: number
 }): Promise<AgentChatHistoryPageDataInterface> {
-  const res = await API.get<AgentChatHistoryResponseInterface>(`${AGENT_BASE}/${params.agentId}`, {
-    params: {
-      beforeId: params.beforeId ?? undefined,
-      limit: params.limit ?? 15,
+  const res = await API.get<AgentChatHistoryResponseInterface>(
+    `/api/chat/agents/${params.agentId}`,
+    {
+      params: {
+        beforeId: params.beforeId ?? undefined,
+        limit: params.limit ?? 15,
+      },
     },
-  })
+  )
 
   if (res.status !== 200 || !res.data) {
     throw new Error(res.message ?? '에이전트 대화 내역을 불러오지 못했습니다.')
@@ -74,7 +74,7 @@ export async function sendAgentChatMessage(
   body: AgentChatSendBodyInterface,
 ): Promise<ChatMessageInterface> {
   const res = await API.post<AgentChatSendResponseInterface, AgentChatSendBodyInterface>(
-    `${AGENT_BASE}/${agent_id}`,
+    `/api/chat/agents/${agent_id}`,
     body,
   )
 

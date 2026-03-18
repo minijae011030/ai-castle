@@ -1,6 +1,9 @@
 import {
   createAgentRole,
+  createAgentPinnedMemory,
+  deleteAgentPinnedMemory,
   getActiveAgentList,
+  getAgentPinnedMemoryList,
   getAgentRoleList,
   updateAgentRole,
 } from '@/services/agent-service'
@@ -10,6 +13,10 @@ import type {
   AgentRoleUpdateBodyInterface,
   ActiveAgentDataInterface,
 } from '@/types/agent.type'
+import type {
+  AgentPinnedMemoryCreateBodyInterface,
+  AgentPinnedMemoryInterface,
+} from '@/types/agent-memory.type'
 import {
   useMutation,
   useQuery,
@@ -25,6 +32,8 @@ export const agent_query_keys = {
   all: ['agent'] as const,
   list: () => [...agent_query_keys.all, 'list'] as const,
   active_list: () => [...agent_query_keys.all, 'active_list'] as const,
+  pinned_memory_list: (agent_id: number) =>
+    [...agent_query_keys.all, 'pinned_memory_list', agent_id] as const,
 }
 
 // 에이전트 롤 목록 조회 훅
@@ -51,6 +60,72 @@ export const useActiveAgentList = (
       return res
     },
     select: useCallback((data: ActiveAgentDataInterface[]) => data, []),
+    ...options,
+  })
+}
+
+// 에이전트 고정 메모리 목록 조회 훅
+export const useAgentPinnedMemoryList = (
+  agent_id: number,
+  options?: UseQueryOptions<AgentPinnedMemoryInterface[], Error>,
+) => {
+  return useQuery({
+    queryKey: agent_query_keys.pinned_memory_list(agent_id),
+    queryFn: async () => {
+      const res = await getAgentPinnedMemoryList(agent_id)
+      return res
+    },
+    enabled: agent_id > 0,
+    select: useCallback((data: AgentPinnedMemoryInterface[]) => data, []),
+    ...options,
+  })
+}
+
+// 에이전트 고정 메모리 추가 훅
+export const useCreateAgentPinnedMemory = (
+  agent_id: number,
+  options?: UseMutationOptions<
+    AgentPinnedMemoryInterface,
+    Error,
+    AgentPinnedMemoryCreateBodyInterface
+  >,
+) => {
+  const query_client = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (body: AgentPinnedMemoryCreateBodyInterface) => {
+      const result = await createAgentPinnedMemory(agent_id, body)
+      return result
+    },
+    onSuccess: () => {
+      query_client.invalidateQueries({ queryKey: agent_query_keys.pinned_memory_list(agent_id) })
+      toast.success('메모리가 저장되었습니다.')
+    },
+    onError: (error) => {
+      toast.error(error.message ?? '메모리를 저장하지 못했습니다.')
+    },
+    ...options,
+  })
+}
+
+// 에이전트 고정 메모리 삭제 훅
+export const useDeleteAgentPinnedMemory = (
+  agent_id: number,
+  options?: UseMutationOptions<void, Error, { memory_id: number }>,
+) => {
+  const query_client = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ memory_id }: { memory_id: number }) => {
+      await deleteAgentPinnedMemory(agent_id, memory_id)
+    },
+    onSuccess: () => {
+      query_client.invalidateQueries({ queryKey: agent_query_keys.pinned_memory_list(agent_id) })
+      toast.success('메모리가 삭제되었습니다.')
+    },
+    onError: (error) => {
+      toast.error(error.message ?? '메모리를 삭제하지 못했습니다.')
+    },
     ...options,
   })
 }
