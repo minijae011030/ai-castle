@@ -16,10 +16,12 @@ import { useRecurringScheduleTemplateList } from '@/hooks/queries/recurring-sche
 import type { RecurringScheduleTemplateInterface } from '@/types/recurring-schedule-template.type'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useActiveAgentList } from '@/hooks/queries/agent-query'
 
 export const CalendarPage = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [detailTargetKey, setDetailTargetKey] = useState<string | null>(null)
 
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
   const { data: schedulesByDay, isPending } = useSchedulesByDay(selectedDateStr)
@@ -29,6 +31,7 @@ export const CalendarPage = () => {
   const { data: schedulesByMonth } = useSchedulesByMonth(year, month)
 
   const { data: recurringTemplates = [] } = useRecurringScheduleTemplateList()
+  const { data: activeAgents = [] } = useActiveAgentList()
 
   const schedulesFromTemplates: ScheduleOccurrenceInterface[] = useMemo(() => {
     if (!recurringTemplates) return []
@@ -142,6 +145,21 @@ export const CalendarPage = () => {
   const toggleScheduleDoneMutation = useToggleScheduleDone()
   const toggleRecurringDoneMutation = useToggleRecurringScheduleDone()
 
+  const detailTarget = useMemo(() => {
+    if (!detailTargetKey) return null
+    return schedulesForSelectedDay.find(
+      (s) => `${s.type}-${s.recurringTemplateId ?? s.id}` === detailTargetKey,
+    )
+  }, [detailTargetKey, schedulesForSelectedDay])
+
+  const agentNameById = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const a of activeAgents) {
+      map.set(a.id, a.name)
+    }
+    return map
+  }, [activeAgents])
+
   return (
     <div className="flex flex-col gap-4 p-4 md:flex-row md:items-start">
       {/* 왼쪽: 월별 캘린더 격자 (큰 셀, 날짜 + 일정 2줄 + +N) */}
@@ -185,69 +203,140 @@ export const CalendarPage = () => {
             }
           />
         </div>
-        <div className="space-y-1 text-xs">
-          {isPending && <p className="text-muted-foreground">불러오는 중...</p>}
+        <div className="rounded-md border bg-card/30 p-2">
+          {isPending && <p className="px-1 py-1 text-xs text-muted-foreground">불러오는 중...</p>}
           {!isPending && schedulesForSelectedDay.length === 0 && (
-            <p className="text-muted-foreground">이 날짜에는 스케줄이 없습니다.</p>
+            <p className="px-1 py-1 text-xs text-muted-foreground">
+              이 날짜에는 스케줄이 없습니다.
+            </p>
           )}
-          {!isPending &&
-            schedulesForSelectedDay.map((s) => {
-              const isDone = s.done
-              const isRecurring =
-                s.type === 'RECURRING_OCCURRENCE' && s.recurringTemplateId !== null
-              return (
-                <button
-                  key={`${s.type}-${s.recurringTemplateId ?? s.id}`}
-                  type="button"
-                  onClick={() => {
-                    if (isRecurring && s.recurringTemplateId) {
-                      toggleRecurringDoneMutation.mutate({
-                        templateId: s.recurringTemplateId,
-                        date: s.occurrenceDate,
-                      })
-                    } else {
-                      toggleScheduleDoneMutation.mutate({ id: s.id })
-                    }
-                  }}
-                  className="flex w-full items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-left hover:bg-accent/60"
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className={cn(
-                        'inline-flex size-4 items-center justify-center rounded-full border text-[10px]',
-                        isDone
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-background text-muted-foreground',
-                      )}
-                    >
-                      {isDone ? '✓' : ''}
-                    </span>
-                    <div className="min-w-0 space-y-0.5">
-                      <p
+          {!isPending && schedulesForSelectedDay.length > 0 && (
+            <div className="max-h-[280px] space-y-1 overflow-y-auto pr-1 text-xs">
+              {schedulesForSelectedDay.map((s) => {
+                const isDone = s.done
+                const isRecurring =
+                  s.type === 'RECURRING_OCCURRENCE' && s.recurringTemplateId !== null
+                const itemKey = `${s.type}-${s.recurringTemplateId ?? s.id}`
+                const isActive = detailTargetKey === itemKey
+                return (
+                  <div
+                    key={itemKey}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setDetailTargetKey(itemKey)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setDetailTargetKey(itemKey)
+                      }
+                    }}
+                    className={cn(
+                      'flex w-full items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-left',
+                      'cursor-pointer hover:bg-accent/60',
+                      isActive && 'border-primary/40 bg-accent/30',
+                    )}
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <button
+                        type="button"
+                        aria-label="완료 토글"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (isRecurring && s.recurringTemplateId) {
+                            toggleRecurringDoneMutation.mutate({
+                              templateId: s.recurringTemplateId,
+                              date: s.occurrenceDate,
+                            })
+                          } else {
+                            toggleScheduleDoneMutation.mutate({ id: s.id })
+                          }
+                        }}
                         className={cn(
-                          'truncate font-medium',
-                          isDone ? 'text-muted-foreground line-through' : 'text-foreground',
+                          'inline-flex size-5 items-center justify-center rounded-full border text-[10px]',
+                          isDone
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-background text-muted-foreground hover:bg-muted',
                         )}
                       >
-                        {s.title}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {format(new Date(s.startAt), 'HH:mm')} ~{' '}
-                        {format(new Date(s.endAt), 'HH:mm')}
-                      </p>
+                        {isDone ? '✓' : ''}
+                      </button>
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <p
+                          className={cn(
+                            'truncate font-medium',
+                            isDone ? 'text-muted-foreground line-through' : 'text-foreground',
+                          )}
+                        >
+                          {s.title}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {format(new Date(s.startAt), 'HH:mm')} ~{' '}
+                          {format(new Date(s.endAt), 'HH:mm')}
+                        </p>
+                      </div>
                     </div>
+                    <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
+                      {s.type === 'RECURRING_OCCURRENCE'
+                        ? '정기'
+                        : s.type === 'CALENDAR_EVENT'
+                          ? '일정'
+                          : '할 일'}
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
-                    {s.type === 'RECURRING_OCCURRENCE'
-                      ? '정기'
-                      : s.type === 'CALENDAR_EVENT'
-                        ? '일정'
-                        : '할 일'}
-                  </Badge>
-                </button>
-              )
-            })}
+                )
+              })}
+            </div>
+          )}
         </div>
+        {detailTarget && (
+          <div className="mt-2 rounded-md border bg-card p-3 text-xs">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{detailTarget.title}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {format(new Date(detailTarget.startAt), 'HH:mm')} ~{' '}
+                  {format(new Date(detailTarget.endAt), 'HH:mm')}
+                </p>
+              </div>
+              <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
+                {detailTarget.type === 'RECURRING_OCCURRENCE'
+                  ? '정기'
+                  : detailTarget.type === 'CALENDAR_EVENT'
+                    ? '일정'
+                    : '할 일'}
+              </Badge>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-muted-foreground">설명</p>
+                <p className="whitespace-pre-wrap">
+                  {detailTarget.description?.trim() ? detailTarget.description : '설명 없음'}
+                </p>
+              </div>
+
+              {detailTarget.type === 'TODO' && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-muted-foreground">에이전트</p>
+                  <p>
+                    {detailTarget.agentId
+                      ? (agentNameById.get(detailTarget.agentId) ?? `#${detailTarget.agentId}`)
+                      : '미지정'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 flex justify-end gap-2">
+              <Button size="sm" variant="outline" disabled>
+                수정 (준비중)
+              </Button>
+              <Button size="sm" variant="destructive" disabled>
+                삭제 (준비중)
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
