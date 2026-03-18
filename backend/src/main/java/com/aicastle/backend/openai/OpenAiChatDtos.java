@@ -14,6 +14,11 @@ public class OpenAiChatDtos {
           List.of(new Message("system", systemPrompt), new Message("user", userContent)),
           temperature);
     }
+
+    public static ChatCompletionRequest ofMessages(
+        String model, List<Message> messages, double temperature) {
+      return new ChatCompletionRequest(model, messages, temperature);
+    }
   }
 
   public record Message(String role, String content) {}

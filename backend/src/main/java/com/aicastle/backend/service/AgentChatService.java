@@ -7,6 +7,7 @@ import com.aicastle.backend.entity.AgentRole;
 import com.aicastle.backend.entity.AgentRoleType;
 import com.aicastle.backend.entity.ChatMessage;
 import com.aicastle.backend.entity.UserAccount;
+import com.aicastle.backend.openai.OpenAiChatDtos.Message;
 import com.aicastle.backend.openai.OpenAiClient;
 import com.aicastle.backend.repository.AgentRoleRepository;
 import com.aicastle.backend.repository.ChatMessageRepository;
@@ -84,6 +85,11 @@ public class AgentChatService {
             .findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
+    // 컨텍스트를 위해, OpenAI 호출 전 "직전 대화"를 먼저 조회한다. (현재 메시지는 별도로 마지막에 추가)
+    List<ChatMessage> recentDesc =
+        chatMessageRepository.findTop50ByUserAccount_IdAndAgentRole_IdOrderByCreatedAtDesc(
+            userId, agentId);
+
     chatMessageRepository.save(new ChatMessage(user, agent, ChatMessage.Role.USER, content));
 
     String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
@@ -96,24 +102,24 @@ public class AgentChatService {
             + agent.getName()
             + ")다. 한국어로 간결하고 실행 가능하게 답하라.";
 
-    String wrappedUserContent =
-        """
-        너는 "%s" 역할을 가진 에이전트다.
-        너는 사용자를 도와야 하며, 아래 규칙을 반드시 따른다.
-
-        [에이전트 규칙]
-        %s
-
-        [사용자 프롬프트]
-        {
-        %s
-        }
-        """
-            .formatted(agent.getName(), agent.getSystemPrompt(), content);
-
     String reply;
     try {
-      reply = openAiClient.createChatCompletion(systemPrompt, wrappedUserContent);
+      List<Message> messages = new ArrayList<>();
+      // 시스템 프롬프트는 한 번만 넣고, 이후는 히스토리 + 현재 유저 메시지로 컨텍스트를 구성한다.
+      messages.add(new Message("system", systemPrompt));
+
+      Collections.reverse(recentDesc); // 오래된 -> 최신
+      for (ChatMessage m : recentDesc) {
+        if (m == null || m.getContent() == null || m.getContent().isBlank()) {
+          continue;
+        }
+        String role = m.getRole() == ChatMessage.Role.USER ? "user" : "assistant";
+        messages.add(new Message(role, m.getContent()));
+      }
+
+      messages.add(new Message("user", content));
+
+      reply = openAiClient.createChatCompletionWithMessages(messages);
     } catch (Exception e) {
       throw new IllegalStateException("OpenAI 호출에 실패했습니다. " + e.getMessage());
     }
