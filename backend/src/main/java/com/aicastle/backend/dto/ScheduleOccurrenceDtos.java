@@ -18,9 +18,7 @@ public class ScheduleOccurrenceDtos {
       LocalDate occurrenceDate,
       LocalDateTime startAt,
       LocalDateTime endAt,
-      Long recurringTemplateId,
-      Long calendarEventId,
-      Long todoId) {
+      Long recurringTemplateId) {
 
     public static ScheduleOccurrenceResponse fromEntity(ScheduleOccurrence entity) {
       return new ScheduleOccurrenceResponse(
@@ -32,9 +30,7 @@ public class ScheduleOccurrenceDtos {
           entity.getOccurrenceDate(),
           entity.getStartAt(),
           entity.getEndAt(),
-          entity.getRecurringTemplateId(),
-          entity.getCalendarEventId(),
-          entity.getTodoId());
+          entity.getRecurringTemplateId());
     }
   }
 
@@ -46,9 +42,7 @@ public class ScheduleOccurrenceDtos {
       LocalDate occurrenceDate,
       LocalDateTime startAt,
       LocalDateTime endAt,
-      Long recurringTemplateId,
-      Long calendarEventId,
-      Long todoId) {}
+      Long recurringTemplateId) {}
 
   /** 부분 수정 요청 DTO. */
   public record ScheduleUpdateRequest(

@@ -193,8 +193,6 @@ export const ScheduleCreateDialog = ({
         occurrenceDate: date_str,
         startAt: start_at,
         endAt: end_at,
-        calendarEventId: type === 'CALENDAR_EVENT' ? 0 : undefined,
-        todoId: type === 'TODO' ? 0 : undefined,
         agentId: agent_id,
       })
     }

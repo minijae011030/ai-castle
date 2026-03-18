@@ -35,14 +35,6 @@ public class ScheduleOccurrence extends BaseTimeEntity {
   @Column(name = "recurring_template_id")
   private Long recurringTemplateId;
 
-  /** 단일 일정 원본 ID (없으면 null). */
-  @Column(name = "calendar_event_id")
-  private Long calendarEventId;
-
-  /** Todo 원본 ID (없으면 null). */
-  @Column(name = "todo_id")
-  private Long todoId;
-
   // 공통 표출 필드 (스냅샷)
   @Column(nullable = false, length = 200)
   private String title;

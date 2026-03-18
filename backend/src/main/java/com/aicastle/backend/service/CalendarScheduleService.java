@@ -156,10 +156,6 @@ public class CalendarScheduleService {
 
     if (request.type() == ScheduleType.RECURRING_OCCURRENCE) {
       occurrence.setRecurringTemplateId(request.recurringTemplateId());
-    } else if (request.type() == ScheduleType.CALENDAR_EVENT) {
-      occurrence.setCalendarEventId(request.calendarEventId());
-    } else if (request.type() == ScheduleType.TODO) {
-      occurrence.setTodoId(request.todoId());
     }
 
     ScheduleOccurrence saved = occurrenceRepository.save(occurrence);

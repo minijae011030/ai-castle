@@ -10,8 +10,6 @@ export interface ScheduleOccurrenceInterface {
   startAt: string
   endAt: string
   recurringTemplateId: number | null
-  calendarEventId: number | null
-  todoId: number | null
 }
 
 export interface ScheduleOccurrenceListResponseInterface {
@@ -34,8 +32,6 @@ export interface ScheduleCreateBodyInterface {
   startAt: string
   endAt: string
   recurringTemplateId?: number
-  calendarEventId?: number
-  todoId?: number
   agentId?: number
 }
 

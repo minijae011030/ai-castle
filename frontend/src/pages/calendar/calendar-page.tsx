@@ -67,8 +67,6 @@ export const CalendarPage = () => {
           startAt: `${dateStr}T${t.startTime}`,
           endAt: `${dateStr}T${t.endTime}`,
           recurringTemplateId: t.id,
-          calendarEventId: null,
-          todoId: null,
         })
       }
     }
@@ -198,7 +196,7 @@ export const CalendarPage = () => {
                 s.type === 'RECURRING_OCCURRENCE' && s.recurringTemplateId !== null
               return (
                 <button
-                  key={`${s.type}-${s.recurringTemplateId ?? s.calendarEventId ?? s.todoId ?? s.id}`}
+                  key={`${s.type}-${s.recurringTemplateId ?? s.id}`}
                   type="button"
                   onClick={() => {
                     if (isRecurring && s.recurringTemplateId) {
