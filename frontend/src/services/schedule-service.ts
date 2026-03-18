@@ -8,6 +8,7 @@ import type {
   ScheduleRangeCreateBodyInterface,
   ScheduleUpdateBodyInterface,
 } from '@/types/schedule.type'
+import type { ChatMessageInterface, AgentChatSendResponseInterface } from '@/types/chat.type'
 
 // 특정 날짜 기준 스케줄 조회
 export async function getSchedulesByDay(date: string): Promise<ScheduleOccurrenceInterface[]> {
@@ -117,4 +118,16 @@ export async function deleteSchedule(id: number): Promise<void> {
   if (res.status !== 200) {
     throw new Error(res.message ?? '스케줄 삭제에 실패했습니다.')
   }
+}
+
+// 할 일(TODO) 에이전트 실행
+export async function runTodoAgent(scheduleOccurrenceId: number): Promise<ChatMessageInterface> {
+  const res = await API.post<AgentChatSendResponseInterface>(
+    `/api/calendar/schedules/${scheduleOccurrenceId}/run-agent`,
+    {},
+  )
+  if (res.status !== 200 || !res.data) {
+    throw new Error(res.message ?? '에이전트 실행에 실패했습니다.')
+  }
+  return res.data
 }

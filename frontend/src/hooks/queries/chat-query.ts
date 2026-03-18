@@ -84,16 +84,51 @@ export const useSendAgentChatMessage = (
   const query_client = useQueryClient()
 
   return useMutation({
+    ...options,
     mutationFn: async (body: AgentChatSendBodyInterface) => {
       const result = await sendAgentChatMessage(agent_id, body)
       return result
     },
-    onSuccess: () => {
+    onMutate: async (variables) => {
+      await query_client.cancelQueries({ queryKey: chat_query_keys.agent(agent_id) })
+      const previous = query_client.getQueryData<ChatMessageInterface[]>(
+        chat_query_keys.agent(agent_id),
+      )
+
+      const now = new Date().toISOString()
+      const userMessage: ChatMessageInterface = {
+        id: `local-user-${now}-${Math.random().toString(16).slice(2)}`,
+        role: 'USER',
+        content: variables.content,
+        createdAt: now,
+      }
+
+      query_client.setQueryData<ChatMessageInterface[]>(chat_query_keys.agent(agent_id), (old) => [
+        ...(old ?? []),
+        userMessage,
+      ])
+
+      const ctx = { previous }
+      await options?.onMutate?.(variables)
+      return ctx
+    },
+    onSuccess: (data, variables, context, mutation) => {
+      query_client.setQueryData<ChatMessageInterface[]>(chat_query_keys.agent(agent_id), (old) => [
+        ...(old ?? []),
+        data,
+      ])
       query_client.invalidateQueries({ queryKey: chat_query_keys.agent(agent_id) })
+      options?.onSuccess?.(data, variables, context, mutation)
     },
-    onError: (error) => {
+    onError: (error, variables, context, mutation) => {
+      if (context?.previous) {
+        query_client.setQueryData(chat_query_keys.agent(agent_id), context.previous)
+      }
       toast.error(error.message ?? '메시지 전송에 실패했습니다.')
+      options?.onError?.(error, variables, context, mutation)
     },
-    ...options,
+    onSettled: (data, error, variables, context) => {
+      options?.onSettled?.(data, error, variables, context)
+    },
   })
 }

@@ -4,6 +4,7 @@ import {
   deleteSchedule,
   getSchedulesByDay,
   getSchedulesByMonth,
+  runTodoAgent,
   toggleRecurringScheduleDone,
   toggleScheduleDone,
   updateSchedule,
@@ -23,6 +24,7 @@ import {
 } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { toast } from 'sonner'
+import type { ChatMessageInterface } from '@/types/chat.type'
 
 // 캘린더/스케줄 관련 쿼리 키
 export const schedule_query_keys = {
@@ -198,6 +200,24 @@ export const useDeleteSchedule = (options?: UseMutationOptions<void, Error, { id
     },
     onError: (error, variables, context, mutation) => {
       toast.error(error.message ?? '스케줄 삭제에 실패했습니다.')
+      options?.onError?.(error, variables, context, mutation)
+    },
+    ...options,
+  })
+}
+
+// 할 일(TODO) 에이전트 실행 훅
+export const useRunTodoAgent = (
+  options?: UseMutationOptions<ChatMessageInterface, Error, { id: number }>,
+) => {
+  return useMutation({
+    mutationFn: ({ id }) => runTodoAgent(id),
+    onSuccess: (data, variables, context, mutation) => {
+      toast.success('에이전트가 실행되었습니다.')
+      options?.onSuccess?.(data, variables, context, mutation)
+    },
+    onError: (error, variables, context, mutation) => {
+      toast.error(error.message ?? '에이전트 실행에 실패했습니다.')
       options?.onError?.(error, variables, context, mutation)
     },
     ...options,

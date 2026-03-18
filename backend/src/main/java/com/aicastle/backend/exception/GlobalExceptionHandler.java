@@ -43,6 +43,13 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(status).body(body);
   }
 
+  @ExceptionHandler(IllegalStateException.class)
+  public ResponseEntity<ResultResponse<Void>> handleIllegalState(IllegalStateException ex) {
+    HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+    ResultResponse<Void> body = ResultResponse.error(status.value(), ex.getMessage());
+    return ResponseEntity.status(status).body(body);
+  }
+
   @ExceptionHandler(DataAccessException.class)
   public ResponseEntity<ResultResponse<Void>> handleDataAccess(DataAccessException ex) {
     HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;

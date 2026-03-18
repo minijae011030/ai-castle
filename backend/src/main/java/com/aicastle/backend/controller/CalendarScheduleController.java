@@ -1,5 +1,6 @@
 package com.aicastle.backend.controller;
 
+import com.aicastle.backend.dto.ChatDtos.ChatMessageResponse;
 import com.aicastle.backend.dto.ResultResponse;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleCreateRequest;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleOccurrenceResponse;
@@ -115,5 +116,13 @@ public class CalendarScheduleController {
     Long userId = getUserId();
     calendarScheduleService.delete(userId, id);
     return ResponseEntity.ok(ResultResponse.success("스케줄이 삭제되었습니다.", null));
+  }
+
+  /** 할 일(TODO) 에이전트 실행. */
+  @PostMapping("/{id}/run-agent")
+  public ResponseEntity<ResultResponse<ChatMessageResponse>> runTodoAgent(@PathVariable Long id) {
+    Long userId = getUserId();
+    ChatMessageResponse data = calendarScheduleService.runTodoAgent(userId, id);
+    return ResponseEntity.ok(ResultResponse.success("에이전트가 실행되었습니다.", data));
   }
 }

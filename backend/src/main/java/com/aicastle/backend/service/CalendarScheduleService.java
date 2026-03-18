@@ -1,5 +1,7 @@
 package com.aicastle.backend.service;
 
+import com.aicastle.backend.dto.ChatDtos.ChatMessageResponse;
+import com.aicastle.backend.dto.ChatDtos.ChatSendRequest;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleCreateRequest;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleOccurrenceResponse;
 import com.aicastle.backend.dto.ScheduleOccurrenceDtos.ScheduleUpdateRequest;
@@ -27,14 +29,17 @@ public class CalendarScheduleService {
   private final ScheduleOccurrenceRepository occurrenceRepository;
   private final UserAccountRepository userAccountRepository;
   private final RecurringScheduleTemplateRepository recurringScheduleTemplateRepository;
+  private final AgentChatService agentChatService;
 
   public CalendarScheduleService(
       ScheduleOccurrenceRepository occurrenceRepository,
       UserAccountRepository userAccountRepository,
-      RecurringScheduleTemplateRepository recurringScheduleTemplateRepository) {
+      RecurringScheduleTemplateRepository recurringScheduleTemplateRepository,
+      AgentChatService agentChatService) {
     this.occurrenceRepository = occurrenceRepository;
     this.userAccountRepository = userAccountRepository;
     this.recurringScheduleTemplateRepository = recurringScheduleTemplateRepository;
+    this.agentChatService = agentChatService;
   }
 
   @Transactional(readOnly = true)
@@ -267,5 +272,42 @@ public class CalendarScheduleService {
     }
 
     occurrenceRepository.delete(occurrence);
+  }
+
+  @Transactional
+  public ChatMessageResponse runTodoAgent(Long userId, Long occurrenceId) {
+    ScheduleOccurrence occurrence =
+        occurrenceRepository
+            .findById(occurrenceId)
+            .orElseThrow(() -> new IllegalArgumentException("스케줄을 찾을 수 없습니다."));
+
+    if (!occurrence.getUserAccount().getId().equals(userId)) {
+      throw new IllegalArgumentException("본인의 스케줄만 실행할 수 있습니다.");
+    }
+    if (occurrence.getType() != ScheduleType.TODO) {
+      throw new IllegalArgumentException("할 일(TODO)만 에이전트를 실행할 수 있습니다.");
+    }
+    if (occurrence.getAgentId() == null) {
+      throw new IllegalArgumentException("에이전트가 지정되지 않았습니다.");
+    }
+
+    String content =
+        "다음 할 일을 처리해 주세요.\n"
+            + "- 제목: "
+            + occurrence.getTitle()
+            + "\n"
+            + "- 설명: "
+            + (occurrence.getDescription() == null ? "" : occurrence.getDescription())
+            + "\n"
+            + "- 날짜: "
+            + occurrence.getOccurrenceDate()
+            + "\n"
+            + "- 시간: "
+            + occurrence.getStartAt()
+            + " ~ "
+            + occurrence.getEndAt();
+
+    return agentChatService.sendMessage(
+        userId, occurrence.getAgentId(), new ChatSendRequest(content));
   }
 }

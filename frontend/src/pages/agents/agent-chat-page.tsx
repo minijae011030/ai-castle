@@ -19,9 +19,15 @@ export const AgentChatPage = () => {
   const { data: messages = [], isPending } = useAgentChatHistory(agentId)
 
   const agent = useMemo(() => agents.find((a) => a.id === agentId) ?? null, [agents, agentId])
-  const sendMutation = useSendAgentChatMessage(agentId)
   const [inputValue, setInputValue] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const sendLockRef = useRef(false)
+
+  const sendMutation = useSendAgentChatMessage(agentId, {
+    onSettled: () => {
+      sendLockRef.current = false
+    },
+  })
 
   // 에이전트 ID 유효성 검사
   useEffect(() => {
@@ -40,14 +46,17 @@ export const AgentChatPage = () => {
   // 채팅 전송 핸들러
   const handleSend = () => {
     const content = inputValue.trim()
-    if (!content || sendMutation.isPending) return
+    if (!content || sendMutation.isPending || sendLockRef.current) return
 
     setInputValue('')
+    sendLockRef.current = true
     sendMutation.mutate({ content })
   }
 
   // 채팅 입력창 엔터키 누르면 전송 핸들러
   const handleKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
+    // 한글 입력(IME) 조합 중 Enter는 전송으로 처리하지 않는다.
+    if ((event.nativeEvent as unknown as { isComposing?: boolean }).isComposing) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       handleSend()

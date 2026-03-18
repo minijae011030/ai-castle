@@ -27,6 +27,7 @@ export const AgentListPage = () => {
   const [chatInput, setChatInput] = useState('')
 
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
+  const sendLockRef = useRef(false)
 
   const { data: agents = [], isPending } = useAgentRoleList()
   const { data: chatMessages = [], isPending: isChatPending } = useAgentChatHistory(
@@ -38,6 +39,9 @@ export const AgentListPage = () => {
   const sendChatMutation = useSendAgentChatMessage(chatAgentId ?? 0, {
     onSuccess: () => {
       setChatInput('')
+    },
+    onSettled: () => {
+      sendLockRef.current = false
     },
   })
 
@@ -104,12 +108,15 @@ export const AgentListPage = () => {
   const handleSendChat = () => {
     if (chatAgentId === null) return
     const content = chatInput.trim()
-    if (!content || sendChatMutation.isPending) return
+    if (!content || sendChatMutation.isPending || sendLockRef.current) return
+    sendLockRef.current = true
     sendChatMutation.mutate({ content })
   }
 
   // 채팅 입력창 엔터키 누르면 전송 핸들러
   const handleChatKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
+    // 한글 입력(IME) 조합 중 Enter는 전송으로 처리하지 않는다.
+    if ((event.nativeEvent as unknown as { isComposing?: boolean }).isComposing) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       handleSendChat()
@@ -166,26 +173,12 @@ export const AgentListPage = () => {
                   <li key={agent.id}>
                     <div
                       className={cn(
-                        'flex flex-1 flex-col items-start gap-1 text-left',
+                        'flex flex-1 justify-between p-3 items-start gap-1 text-left text-sm',
                         is_active ? 'bg-primary/10' : 'bg-background',
                       )}
+                      onClick={() => handleOpenChat(agent)}
                     >
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="outline"
-                        onClick={() => handleOpenChat(agent)}
-                      >
-                        {agent.name}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="outline"
-                        onClick={() => handleSelectAgentForSettings(agent)}
-                      >
-                        설정
-                      </Button>
+                      {agent.name}
                     </div>
                   </li>
                 )

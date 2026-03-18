@@ -6,6 +6,7 @@ import {
   useSchedulesByMonth,
   useToggleScheduleDone,
   useToggleRecurringScheduleDone,
+  useRunTodoAgent,
 } from '@/hooks/queries/schedule-query'
 import { format } from 'date-fns'
 import { CalendarDayCell } from '@/components/calendar/calendar-day-cell'
@@ -17,11 +18,13 @@ import type { RecurringScheduleTemplateInterface } from '@/types/recurring-sched
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useActiveAgentList } from '@/hooks/queries/agent-query'
+import type { ChatMessageInterface } from '@/types/chat.type'
 
 export const CalendarPage = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [detailTargetKey, setDetailTargetKey] = useState<string | null>(null)
+  const [todoAgentResult, setTodoAgentResult] = useState<ChatMessageInterface | null>(null)
 
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
   const { data: schedulesByDay, isPending } = useSchedulesByDay(selectedDateStr)
@@ -144,6 +147,9 @@ export const CalendarPage = () => {
 
   const toggleScheduleDoneMutation = useToggleScheduleDone()
   const toggleRecurringDoneMutation = useToggleRecurringScheduleDone()
+  const runTodoAgentMutation = useRunTodoAgent({
+    onSuccess: (msg) => setTodoAgentResult(msg),
+  })
 
   const detailTarget = useMemo(() => {
     if (!detailTargetKey) return null
@@ -224,6 +230,7 @@ export const CalendarPage = () => {
                     role="button"
                     tabIndex={0}
                     onClick={() => setDetailTargetKey(itemKey)}
+                    onClickCapture={() => setTodoAgentResult(null)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
@@ -326,6 +333,27 @@ export const CalendarPage = () => {
                 </div>
               )}
             </div>
+
+            {detailTarget.type === 'TODO' && (
+              <div className="mt-3 space-y-2">
+                <div className="flex justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!detailTarget.agentId || runTodoAgentMutation.isPending}
+                    onClick={() => runTodoAgentMutation.mutate({ id: detailTarget.id })}
+                  >
+                    에이전트 실행
+                  </Button>
+                </div>
+                {todoAgentResult && (
+                  <div className="rounded-md border bg-muted/40 p-2 text-xs">
+                    <p className="text-[11px] font-medium text-muted-foreground">응답</p>
+                    <p className="mt-1 whitespace-pre-wrap">{todoAgentResult.content}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mt-3 flex justify-end gap-2">
               <Button size="sm" variant="outline" disabled>
