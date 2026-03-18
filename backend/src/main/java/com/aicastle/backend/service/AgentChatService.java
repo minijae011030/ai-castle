@@ -11,6 +11,7 @@ import com.aicastle.backend.entity.ChatMessage;
 import com.aicastle.backend.entity.UserAccount;
 import com.aicastle.backend.openai.OpenAiChatDtos.Message;
 import com.aicastle.backend.openai.OpenAiClient;
+import com.aicastle.backend.repository.AgentPinnedMemoryRepository;
 import com.aicastle.backend.repository.AgentRoleRepository;
 import com.aicastle.backend.repository.ChatMessageRepository;
 import com.aicastle.backend.repository.UserAccountRepository;
@@ -30,16 +31,19 @@ public class AgentChatService {
   private final AgentRoleRepository agentRoleRepository;
   private final UserAccountRepository userAccountRepository;
   private final ChatMessageRepository chatMessageRepository;
+  private final AgentPinnedMemoryRepository agentPinnedMemoryRepository;
   private final OpenAiClient openAiClient;
 
   public AgentChatService(
       AgentRoleRepository agentRoleRepository,
       UserAccountRepository userAccountRepository,
       ChatMessageRepository chatMessageRepository,
+      AgentPinnedMemoryRepository agentPinnedMemoryRepository,
       OpenAiClient openAiClient) {
     this.agentRoleRepository = agentRoleRepository;
     this.userAccountRepository = userAccountRepository;
     this.chatMessageRepository = chatMessageRepository;
+    this.agentPinnedMemoryRepository = agentPinnedMemoryRepository;
     this.openAiClient = openAiClient;
   }
 
@@ -176,8 +180,25 @@ public class AgentChatService {
       // 시스템 프롬프트는 한 번만 넣고, 이후는 히스토리 + 현재 유저 메시지로 컨텍스트를 구성한다.
       messages.add(new Message("system", systemPrompt));
 
-      Collections.reverse(recentDesc); // 오래된 -> 최신
-      for (ChatMessage m : recentDesc) {
+      // 고정 메모리(최대 10개)를 항상 주입한다. (사용자 직접 관리, FIFO 금지)
+      var pinnedMemories =
+          agentPinnedMemoryRepository.findByUserAccount_IdAndAgentRole_IdOrderByCreatedAtAsc(
+              userId, agentId);
+      if (!pinnedMemories.isEmpty()) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[고정 메모리]\n");
+        for (int i = 0; i < pinnedMemories.size(); i++) {
+          String mem = pinnedMemories.get(i).getContent();
+          if (mem == null || mem.isBlank()) continue;
+          sb.append("- ").append(mem.trim()).append("\n");
+        }
+        messages.add(new Message("system", sb.toString().trim()));
+      }
+
+      // 최근 대화 슬라이딩 윈도우(최근 N개) 주입
+      List<ChatMessage> recentAsc = new ArrayList<>(recentDesc);
+      Collections.reverse(recentAsc); // 오래된 -> 최신
+      for (ChatMessage m : recentAsc) {
         if (m == null || m.getContent() == null || m.getContent().isBlank()) {
           continue;
         }
