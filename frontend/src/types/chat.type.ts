@@ -26,7 +26,13 @@ export interface MainChatSendResponseInterface {
 export interface AgentChatHistoryResponseInterface {
   status: number
   message: string
-  data: ChatMessageInterface[] | null
+  data: AgentChatHistoryPageDataInterface | null
+}
+
+export interface AgentChatHistoryPageDataInterface {
+  items: ChatMessageInterface[]
+  nextBeforeId: number | null
+  hasMore: boolean
 }
 
 export interface AgentChatSendBodyInterface {

@@ -1,6 +1,7 @@
 import { API } from '@/lib/client'
 import type {
   AgentChatHistoryResponseInterface,
+  AgentChatHistoryPageDataInterface,
   AgentChatSendBodyInterface,
   AgentChatSendResponseInterface,
   ChatMessageInterface,
@@ -38,7 +39,28 @@ export async function sendMainChatMessage(
 }
 
 export async function getAgentChatHistory(agent_id: number): Promise<ChatMessageInterface[]> {
-  const res = await API.get<AgentChatHistoryResponseInterface>(`${AGENT_BASE}/${agent_id}`)
+  const res = await API.get<AgentChatHistoryResponseInterface>(`${AGENT_BASE}/${agent_id}`, {
+    params: { limit: 15 },
+  })
+
+  if (res.status !== 200 || !res.data) {
+    throw new Error(res.message ?? '에이전트 대화 내역을 불러오지 못했습니다.')
+  }
+
+  return res.data.items
+}
+
+export async function getAgentChatHistoryPage(params: {
+  agentId: number
+  beforeId?: number | null
+  limit?: number
+}): Promise<AgentChatHistoryPageDataInterface> {
+  const res = await API.get<AgentChatHistoryResponseInterface>(`${AGENT_BASE}/${params.agentId}`, {
+    params: {
+      beforeId: params.beforeId ?? undefined,
+      limit: params.limit ?? 15,
+    },
+  })
 
   if (res.status !== 200 || !res.data) {
     throw new Error(res.message ?? '에이전트 대화 내역을 불러오지 못했습니다.')

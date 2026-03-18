@@ -1,5 +1,6 @@
 package com.aicastle.backend.service;
 
+import com.aicastle.backend.dto.ChatDtos.ChatHistoryPageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatMessageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatMessageRole;
 import com.aicastle.backend.dto.ChatDtos.ChatSendRequest;
@@ -17,6 +18,8 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 /** 서브 에이전트와의 채팅 스켈레톤 서비스. */
@@ -56,16 +59,73 @@ public class AgentChatService {
         new ChatMessageResponse(
             "system-intro-" + agentId, ChatMessageRole.SYSTEM, systemIntro, Instant.now()));
 
-    Collections.reverse(recentDesc); // 오래된 -> 최신
-    for (ChatMessage m : recentDesc) {
+    // repository 구현/버전에 따라 불변 리스트가 올 수 있어, reverse는 복사본에 대해 수행한다.
+    List<ChatMessage> recentAsc = new ArrayList<>(recentDesc);
+    Collections.reverse(recentAsc); // 오래된 -> 최신
+    for (ChatMessage m : recentAsc) {
+      Instant createdAt =
+          m.getCreatedAt() == null
+              ? Instant.now()
+              : m.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
       result.add(
           new ChatMessageResponse(
               String.valueOf(m.getId()),
               ChatMessageRole.valueOf(m.getRole().name()),
               m.getContent(),
-              m.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant()));
+              createdAt));
     }
     return result;
+  }
+
+  /** 커서 기반 히스토리 조회. beforeId가 null이면 최신 페이지를 반환한다. */
+  public ChatHistoryPageResponse getMessagesPage(
+      Long userId, Long agentId, Long beforeId, int limit) {
+    AgentRole agent =
+        agentRoleRepository
+            .findById(agentId)
+            .orElseThrow(() -> new IllegalArgumentException("에이전트를 찾을 수 없습니다."));
+
+    int safeLimit = Math.max(1, Math.min(limit, 50));
+    PageRequest pageRequest = PageRequest.of(0, safeLimit);
+
+    Page<ChatMessage> page =
+        beforeId == null
+            ? chatMessageRepository.findByUserAccount_IdAndAgentRole_IdOrderByIdDesc(
+                userId, agentId, pageRequest)
+            : chatMessageRepository.findByUserAccount_IdAndAgentRole_IdAndIdLessThanOrderByIdDesc(
+                userId, agentId, beforeId, pageRequest);
+
+    // Page.getContent()가 불변 리스트일 수 있어, 항상 mutable로 복사한다.
+    List<ChatMessage> descItems = new ArrayList<>(page.getContent()); // 최신 -> 과거
+    List<ChatMessageResponse> items = new ArrayList<>();
+
+    // 첫 페이지(최신 구간)에서만 시스템 인트로를 1번 넣는다.
+    if (beforeId == null) {
+      String systemIntro =
+          agent.getRoleType() == AgentRoleType.MAIN ? "메인 에이전트와의 대화입니다." : "서브 에이전트와의 대화입니다.";
+      items.add(
+          new ChatMessageResponse(
+              "system-intro-" + agentId, ChatMessageRole.SYSTEM, systemIntro, Instant.now()));
+    }
+
+    Collections.reverse(descItems); // 오래된 -> 최신
+    for (ChatMessage m : descItems) {
+      Instant createdAt =
+          m.getCreatedAt() == null
+              ? Instant.now()
+              : m.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
+      items.add(
+          new ChatMessageResponse(
+              String.valueOf(m.getId()),
+              ChatMessageRole.valueOf(m.getRole().name()),
+              m.getContent(),
+              createdAt));
+    }
+
+    Long nextBeforeId = descItems.isEmpty() ? null : descItems.get(0).getId();
+    boolean hasMore = page.hasNext();
+
+    return new ChatHistoryPageResponse(items, nextBeforeId, hasMore);
   }
 
   public ChatMessageResponse sendMessage(Long userId, Long agentId, ChatSendRequest request) {

@@ -1,11 +1,11 @@
 package com.aicastle.backend.controller;
 
+import com.aicastle.backend.dto.ChatDtos.ChatHistoryPageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatMessageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatSendRequest;
 import com.aicastle.backend.dto.ResultResponse;
 import com.aicastle.backend.service.AgentChatService;
 import jakarta.validation.Valid;
-import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 서브 에이전트 채팅 API 스켈레톤. */
@@ -35,10 +36,13 @@ public class AgentChatController {
   }
 
   @GetMapping("/{agentId}")
-  public ResponseEntity<ResultResponse<List<ChatMessageResponse>>> history(
-      @PathVariable Long agentId) {
+  public ResponseEntity<ResultResponse<ChatHistoryPageResponse>> history(
+      @PathVariable Long agentId,
+      @RequestParam(required = false) Long beforeId,
+      @RequestParam(defaultValue = "30") int limit) {
     Long userId = getUserId();
-    List<ChatMessageResponse> data = agentChatService.getRecentMessages(userId, agentId);
+    ChatHistoryPageResponse data =
+        agentChatService.getMessagesPage(userId, agentId, beforeId, limit);
     return ResponseEntity.ok(ResultResponse.success(data));
   }
 

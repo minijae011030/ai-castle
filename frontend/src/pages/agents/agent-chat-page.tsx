@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { useAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
+import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
 import { useAgentRoleList } from '@/hooks/queries/agent-query'
 import type { ChatMessageInterface } from '@/types/chat.type'
 import { useRouter } from '@tanstack/react-router'
@@ -17,12 +17,19 @@ export const AgentChatPage = () => {
   const agentId = Number(params.agentId)
 
   const { data: agents = [] } = useAgentRoleList()
-  const { data: messages = [], isPending } = useAgentChatHistory(agentId)
+  const {
+    data: chatPages,
+    isPending,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useInfiniteAgentChatHistory(agentId)
 
   const agent = useMemo(() => agents.find((a) => a.id === agentId) ?? null, [agents, agentId])
   const [inputValue, setInputValue] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const sendLockRef = useRef(false)
+  const keepScrollOffsetRef = useRef<{ top: number; height: number } | null>(null)
 
   const sendMutation = useSendAgentChatMessage(agentId, {
     onSettled: () => {
@@ -40,9 +47,42 @@ export const AgentChatPage = () => {
   // 채팅 스크롤 핸들러
   useEffect(() => {
     if (!scrollRef.current) return
+    if (isFetchingNextPage) return
 
+    // 과거 메시지 prepend 후에는 기존 위치를 보존한다.
+    if (keepScrollOffsetRef.current) {
+      const prev = keepScrollOffsetRef.current
+      keepScrollOffsetRef.current = null
+      const nextHeight = scrollRef.current.scrollHeight
+      scrollRef.current.scrollTop = nextHeight - prev.height + prev.top
+      return
+    }
+
+    // 기본 동작: 최신 메시지 도착 시 바닥으로 스크롤
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages.length])
+  }, [chatPages?.pages?.length, chatPages?.pages?.[0]?.items?.length, isFetchingNextPage])
+
+  const messages: ChatMessageInterface[] = useMemo(() => {
+    const pages = chatPages?.pages ?? []
+    if (pages.length === 0) return []
+
+    const newestPage = pages[0]
+    const olderPages = pages.slice(1)
+    const systemItems = newestPage.items.filter((m) => m.role === 'SYSTEM')
+    const newestNonSystem = newestPage.items.filter((m) => m.role !== 'SYSTEM')
+    const olderChrono = [...olderPages].reverse().flatMap((p) => p.items)
+
+    return [...systemItems, ...olderChrono, ...newestNonSystem]
+  }, [chatPages])
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = async (event) => {
+    const el = event.currentTarget
+    if (el.scrollTop > 80) return
+    if (!hasNextPage || isFetchingNextPage) return
+
+    keepScrollOffsetRef.current = { top: el.scrollTop, height: el.scrollHeight }
+    await fetchNextPage()
+  }
 
   // 채팅 전송 핸들러
   const handleSend = () => {
@@ -122,6 +162,7 @@ export const AgentChatPage = () => {
           <div
             ref={scrollRef}
             className="flex-1 space-y-2 overflow-auto rounded-md border bg-background p-3 max-h-[min(1000px,calc(100dvh-320px))]"
+            onScroll={handleScroll}
           >
             {isPending ? (
               <p className="text-xs text-muted-foreground">대화 내역을 불러오는 중입니다...</p>

@@ -3,6 +3,8 @@ package com.aicastle.backend.exception;
 import com.aicastle.backend.dto.ResultResponse;
 import java.util.HashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +16,8 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 /** 전역 예외 핸들러. 항상 ResultResponse 포맷으로 반환한다. */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ResultResponse<Map<String, String>>> handleValidationException(
@@ -60,7 +64,13 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ResultResponse<Void>> handleUnknown(Exception ex) {
     HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-    ResultResponse<Void> body = ResultResponse.error(status.value(), "알 수 없는 오류가 발생했습니다.");
+    // 디버깅을 위해 서버 로그에 스택트레이스를 남긴다.
+    log.error("Unhandled exception", ex);
+    String message =
+        ex.getMessage() == null || ex.getMessage().isBlank()
+            ? "알 수 없는 오류가 발생했습니다."
+            : ex.getMessage();
+    ResultResponse<Void> body = ResultResponse.error(status.value(), message);
     return ResponseEntity.status(status).body(body);
   }
 }

@@ -8,11 +8,11 @@ import {
   useCreateAgentRole,
   useUpdateAgentRole,
 } from '@/hooks/queries/agent-query'
-import { useAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
+import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
 import { cn } from '@/lib/utils'
 import type { AgentRoleDataInterface } from '@/types/agent.type'
 import type { ChatMessageInterface } from '@/types/chat.type'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownMessage } from '@/components/chat/markdown-message'
 
 const emptyForm = {
@@ -30,11 +30,16 @@ export const AgentListPage = () => {
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const sendLockRef = useRef(false)
   const lastSentContentRef = useRef<string | null>(null)
+  const keepScrollOffsetRef = useRef<{ top: number; height: number } | null>(null)
 
   const { data: agents = [], isPending } = useAgentRoleList()
-  const { data: chatMessages = [], isPending: isChatPending } = useAgentChatHistory(
-    chatAgentId ?? 0,
-  )
+  const {
+    data: chatPages,
+    isPending: isChatPending,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useInfiniteAgentChatHistory(chatAgentId ?? 0)
 
   const createMutation = useCreateAgentRole()
   const updateMutation = useUpdateAgentRole()
@@ -56,8 +61,40 @@ export const AgentListPage = () => {
 
   useEffect(() => {
     if (!chatScrollRef.current) return
+    if (isFetchingNextPage) return
+
+    if (keepScrollOffsetRef.current) {
+      const prev = keepScrollOffsetRef.current
+      keepScrollOffsetRef.current = null
+      const nextHeight = chatScrollRef.current.scrollHeight
+      chatScrollRef.current.scrollTop = nextHeight - prev.height + prev.top
+      return
+    }
+
     chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
-  }, [chatMessages.length])
+  }, [chatPages?.pages?.length, chatPages?.pages?.[0]?.items?.length, isFetchingNextPage])
+
+  const chatMessages: ChatMessageInterface[] = useMemo(() => {
+    const pages = chatPages?.pages ?? []
+    if (pages.length === 0) return []
+
+    const newestPage = pages[0]
+    const olderPages = pages.slice(1)
+    const systemItems = newestPage.items.filter((m) => m.role === 'SYSTEM')
+    const newestNonSystem = newestPage.items.filter((m) => m.role !== 'SYSTEM')
+    const olderChrono = [...olderPages].reverse().flatMap((p) => p.items)
+
+    return [...systemItems, ...olderChrono, ...newestNonSystem]
+  }, [chatPages])
+
+  const handleChatScroll: React.UIEventHandler<HTMLDivElement> = async (event) => {
+    const el = event.currentTarget
+    if (el.scrollTop > 80) return
+    if (!hasNextPage || isFetchingNextPage) return
+
+    keepScrollOffsetRef.current = { top: el.scrollTop, height: el.scrollHeight }
+    await fetchNextPage()
+  }
 
   // 새 에이전트 추가 버튼 클릭 핸들러
   const handleChangeNew = () => {
@@ -297,6 +334,7 @@ export const AgentListPage = () => {
               <div
                 ref={chatScrollRef}
                 className="flex-1 space-y-2 overflow-auto rounded-md border bg-background p-3 max-h-[min(1000px,calc(100dvh-320px))]"
+                onScroll={handleChatScroll}
               >
                 {isChatPending ? (
                   <p className="text-xs text-muted-foreground">대화 내역을 불러오는 중입니다...</p>
