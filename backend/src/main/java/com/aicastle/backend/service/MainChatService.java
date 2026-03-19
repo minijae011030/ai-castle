@@ -15,12 +15,12 @@ public class MainChatService {
   public List<ChatMessageResponse> getRecentMessages(Long userId) {
     // TODO: 이후 DB에서 userId 기준으로 최근 N개 대화 조회
     return List.of(
-        new ChatMessageResponse(
+        ChatMessageResponse.of(
             UUID.randomUUID().toString(),
             ChatMessageRole.SYSTEM,
             "어머니, 예서의 바이오리듬에 맞춰 오늘 일정을 조율하겠습니다.",
             Instant.now().minusSeconds(60)),
-        new ChatMessageResponse(
+        ChatMessageResponse.of(
             UUID.randomUUID().toString(),
             ChatMessageRole.ASSISTANT,
             "오늘은 코테 2문제, SQLD 기출 1세트를 권장드립니다.",
@@ -38,7 +38,7 @@ public class MainChatService {
     // 임시 응답: 사용자의 메시지를 받아 간단한 에코 형태로 응답
     String reply = "좋습니다. \"" + content + "\"에 맞춰 오늘 일정을 다시 조정해 보겠습니다. 우선 할 일을 조금 줄이죠.";
 
-    return new ChatMessageResponse(
+    return ChatMessageResponse.of(
         UUID.randomUUID().toString(), ChatMessageRole.ASSISTANT, reply, Instant.now());
   }
 }

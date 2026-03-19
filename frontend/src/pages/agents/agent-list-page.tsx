@@ -26,6 +26,7 @@ import type { ChatMessageInterface } from '@/types/chat.type'
 import { BookmarkPlus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownMessage } from '@/components/chat/markdown-message'
+import { TodoMessage } from '@/components/chat/todo-message'
 
 const emptyForm = {
   name: '',
@@ -205,6 +206,7 @@ export const AgentListPage = () => {
     const is_user = message.role === 'USER'
     const is_assistant = message.role === 'ASSISTANT'
     const can_save_memory = is_user || is_assistant
+    const todo_items = message.todo?.filter(Boolean) ?? []
 
     return (
       <div
@@ -238,7 +240,10 @@ export const AgentListPage = () => {
           {is_user ? (
             <div className="whitespace-pre-wrap wrap-break-word">{message.content}</div>
           ) : (
-            <MarkdownMessage content={message.content} />
+            <>
+              <MarkdownMessage content={message.content} />
+              {todo_items.length > 0 ? <TodoMessage items={todo_items} /> : null}
+            </>
           )}
         </div>
         {!is_user && can_save_memory && (

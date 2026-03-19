@@ -1,10 +1,25 @@
 export type ChatMessageRole = 'USER' | 'ASSISTANT' | 'SYSTEM'
 
+export type TodoPriority = 'LOW' | 'MEDIUM' | 'HIGH'
+export type TodoStatus = 'TODO' | 'DONE'
+
+export interface TodoItemInterface {
+  title: string
+  description: string | null
+  estimateMinutes: number | null
+  priority: TodoPriority
+  status: TodoStatus
+  scheduledDate: string
+  startAt: string
+  endAt: string
+}
+
 export interface ChatMessageInterface {
   id: string
   role: ChatMessageRole
   content: string
   createdAt: string
+  todo?: TodoItemInterface[] | null
 }
 
 export interface MainChatHistoryResponseInterface {
@@ -15,6 +30,7 @@ export interface MainChatHistoryResponseInterface {
 
 export interface MainChatSendBodyInterface {
   content: string
+  mode: 'CHAT' | 'TODO'
 }
 
 export interface MainChatSendResponseInterface {
@@ -37,7 +53,7 @@ export interface AgentChatHistoryPageDataInterface {
 
 export interface AgentChatSendBodyInterface {
   content: string
-  mode?: 'CHAT' | 'TODO'
+  mode: 'CHAT' | 'TODO'
 }
 
 export interface AgentChatSendResponseInterface {

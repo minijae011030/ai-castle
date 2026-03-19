@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Route } from '@/routes/_protected/agents/$agentId.chat'
 import { cn } from '@/lib/utils'
 import { MarkdownMessage } from '@/components/chat/markdown-message'
+import { TodoMessage } from '@/components/chat/todo-message'
 
 export const AgentChatPage = () => {
   const params = Route.useParams()
@@ -119,6 +120,7 @@ export const AgentChatPage = () => {
     const isUser = message.role === 'USER'
     const isAssistant = message.role === 'ASSISTANT'
     const canSaveMemory = isUser || isAssistant
+    const todo_items = message.todo?.filter(Boolean) ?? []
 
     return (
       <div
@@ -152,7 +154,10 @@ export const AgentChatPage = () => {
           {isUser ? (
             <div className="whitespace-pre-wrap wrap-break-word">{message.content}</div>
           ) : (
-            <MarkdownMessage content={message.content} />
+            <>
+              <MarkdownMessage content={message.content} />
+              {todo_items.length > 0 ? <TodoMessage items={todo_items} /> : null}
+            </>
           )}
         </div>
         {isUser && canSaveMemory && (

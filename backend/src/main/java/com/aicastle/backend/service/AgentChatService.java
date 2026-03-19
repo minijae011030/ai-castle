@@ -5,6 +5,9 @@ import com.aicastle.backend.dto.ChatDtos.ChatMessageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatMessageRole;
 import com.aicastle.backend.dto.ChatDtos.ChatMode;
 import com.aicastle.backend.dto.ChatDtos.ChatSendRequest;
+import com.aicastle.backend.dto.ChatDtos.TodoItem;
+import com.aicastle.backend.dto.ChatDtos.TodoPriority;
+import com.aicastle.backend.dto.ChatDtos.TodoStatus;
 import com.aicastle.backend.entity.AgentRole;
 import com.aicastle.backend.entity.AgentRoleType;
 import com.aicastle.backend.entity.ChatMessage;
@@ -15,6 +18,8 @@ import com.aicastle.backend.repository.AgentPinnedMemoryRepository;
 import com.aicastle.backend.repository.AgentRoleRepository;
 import com.aicastle.backend.repository.ChatMessageRepository;
 import com.aicastle.backend.repository.UserAccountRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -33,18 +38,21 @@ public class AgentChatService {
   private final ChatMessageRepository chatMessageRepository;
   private final AgentPinnedMemoryRepository agentPinnedMemoryRepository;
   private final OpenAiClient openAiClient;
+  private final ObjectMapper objectMapper;
 
   public AgentChatService(
       AgentRoleRepository agentRoleRepository,
       UserAccountRepository userAccountRepository,
       ChatMessageRepository chatMessageRepository,
       AgentPinnedMemoryRepository agentPinnedMemoryRepository,
-      OpenAiClient openAiClient) {
+      OpenAiClient openAiClient,
+      ObjectMapper objectMapper) {
     this.agentRoleRepository = agentRoleRepository;
     this.userAccountRepository = userAccountRepository;
     this.chatMessageRepository = chatMessageRepository;
     this.agentPinnedMemoryRepository = agentPinnedMemoryRepository;
     this.openAiClient = openAiClient;
+    this.objectMapper = objectMapper;
   }
 
   public List<ChatMessageResponse> getRecentMessages(Long userId, Long agentId) {
@@ -61,7 +69,7 @@ public class AgentChatService {
             userId, agentId);
     List<ChatMessageResponse> result = new ArrayList<>();
     result.add(
-        new ChatMessageResponse(
+        ChatMessageResponse.of(
             "system-intro-" + agentId, ChatMessageRole.SYSTEM, systemIntro, Instant.now()));
 
     // repository 구현/버전에 따라 불변 리스트가 올 수 있어, reverse는 복사본에 대해 수행한다.
@@ -72,12 +80,7 @@ public class AgentChatService {
           m.getCreatedAt() == null
               ? Instant.now()
               : m.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
-      result.add(
-          new ChatMessageResponse(
-              String.valueOf(m.getId()),
-              ChatMessageRole.valueOf(m.getRole().name()),
-              m.getContent(),
-              createdAt));
+      result.add(toChatMessageResponse(m, createdAt));
     }
     return result;
   }
@@ -109,7 +112,7 @@ public class AgentChatService {
       String systemIntro =
           agent.getRoleType() == AgentRoleType.MAIN ? "메인 에이전트와의 대화입니다." : "서브 에이전트와의 대화입니다.";
       items.add(
-          new ChatMessageResponse(
+          ChatMessageResponse.of(
               "system-intro-" + agentId, ChatMessageRole.SYSTEM, systemIntro, Instant.now()));
     }
 
@@ -119,12 +122,7 @@ public class AgentChatService {
           m.getCreatedAt() == null
               ? Instant.now()
               : m.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
-      items.add(
-          new ChatMessageResponse(
-              String.valueOf(m.getId()),
-              ChatMessageRole.valueOf(m.getRole().name()),
-              m.getContent(),
-              createdAt));
+      items.add(toChatMessageResponse(m, createdAt));
     }
 
     Long nextBeforeId = descItems.isEmpty() ? null : descItems.get(0).getId();
@@ -158,10 +156,10 @@ public class AgentChatService {
     chatMessageRepository.save(new ChatMessage(user, agent, ChatMessage.Role.USER, content));
 
     String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
-    ChatMode mode = request.mode() == null ? ChatMode.CHAT : request.mode();
+    ChatMode mode = request.mode();
     String modePrompt =
         mode == ChatMode.TODO
-            ? "\n\n[모드: TODO]\n- 사용자의 요청을 실행 가능한 TODO 체크리스트로 변환해라.\n- 마크다운으로 답하라.\n- 각 항목은 짧고 측정 가능해야 한다.\n"
+            ? "\n\n[모드: TODO]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 모든 todo 항목에 날짜/시간을 반드시 포함하라.\n- todo 항목은 짧고 측정 가능해야 한다.\n"
             : "\n\n[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
 
     String systemPrompt =
@@ -208,7 +206,10 @@ public class AgentChatService {
 
       messages.add(new Message("user", content));
 
-      reply = openAiClient.createChatCompletionWithMessages(messages);
+      reply =
+          mode == ChatMode.TODO
+              ? openAiClient.createTodoJsonWithMessages(messages)
+              : openAiClient.createChatCompletionWithMessages(messages);
     } catch (Exception e) {
       throw new IllegalStateException("OpenAI 호출에 실패했습니다. " + e.getMessage());
     }
@@ -216,10 +217,91 @@ public class AgentChatService {
     ChatMessage saved =
         chatMessageRepository.save(new ChatMessage(user, agent, ChatMessage.Role.ASSISTANT, reply));
 
-    return new ChatMessageResponse(
-        String.valueOf(saved.getId()),
-        ChatMessageRole.ASSISTANT,
-        saved.getContent(),
-        saved.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant());
+    Instant createdAt = saved.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
+    return toChatMessageResponse(saved, createdAt);
+  }
+
+  private ChatMessageResponse toChatMessageResponse(ChatMessage message, Instant createdAt) {
+    String id = String.valueOf(message.getId());
+    ChatMessageRole role = ChatMessageRole.valueOf(message.getRole().name());
+    String rawContent = message.getContent() == null ? "" : message.getContent();
+
+    // TODO 모드 응답은 DB에 JSON 원문이 저장될 수 있다. 가능하면 파싱해서 content=text, todo=list로 내려준다.
+    if (role == ChatMessageRole.ASSISTANT) {
+      TodoJsonParsed parsed = tryParseTodoJson(rawContent);
+      if (parsed != null) {
+        return new ChatMessageResponse(id, role, parsed.text(), createdAt, parsed.todo());
+      }
+    }
+
+    return ChatMessageResponse.of(id, role, rawContent, createdAt);
+  }
+
+  private record TodoJsonParsed(String text, List<TodoItem> todo) {}
+
+  private TodoJsonParsed tryParseTodoJson(String raw) {
+    String trimmed = raw == null ? "" : raw.trim();
+    if (trimmed.isEmpty()) return null;
+    if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
+
+    try {
+      JsonNode root = objectMapper.readTree(trimmed);
+      if (root == null || !root.isObject()) return null;
+      JsonNode textNode = root.get("text");
+      JsonNode todoNode = root.get("todo");
+      if (textNode == null || !textNode.isTextual()) return null;
+      if (todoNode == null || !todoNode.isArray()) return null;
+
+      String text = textNode.asText("");
+      List<TodoItem> todo = new ArrayList<>();
+      for (JsonNode item : todoNode) {
+        if (item == null || !item.isObject()) continue;
+
+        String title = item.path("title").asText("").trim();
+        if (title.isEmpty()) continue;
+
+        String description =
+            item.hasNonNull("description") ? item.path("description").asText(null) : null;
+        Integer estimateMinutes =
+            item.hasNonNull("estimateMinutes") ? item.path("estimateMinutes").asInt() : null;
+
+        TodoPriority priority =
+            parseEnumOrDefault(item.path("priority").asText(null), TodoPriority.MEDIUM);
+        TodoStatus status = parseEnumOrDefault(item.path("status").asText(null), TodoStatus.TODO);
+        String scheduledDate = item.path("scheduledDate").asText("").trim();
+        String startAt = item.path("startAt").asText("").trim();
+        String endAt = item.path("endAt").asText("").trim();
+
+        if (scheduledDate.isEmpty() || startAt.isEmpty() || endAt.isEmpty()) {
+          continue;
+        }
+
+        todo.add(
+            new TodoItem(
+                title,
+                description,
+                estimateMinutes,
+                priority,
+                status,
+                scheduledDate,
+                startAt,
+                endAt));
+      }
+
+      return new TodoJsonParsed(text, todo);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private static <T extends Enum<T>> T parseEnumOrDefault(String raw, T defaultValue) {
+    if (raw == null || raw.isBlank()) return defaultValue;
+    try {
+      @SuppressWarnings("unchecked")
+      T parsed = (T) Enum.valueOf(defaultValue.getDeclaringClass(), raw.trim().toUpperCase());
+      return parsed;
+    } catch (Exception ignored) {
+      return defaultValue;
+    }
   }
 }

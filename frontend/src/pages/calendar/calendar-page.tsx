@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useActiveAgentList } from '@/hooks/queries/agent-query'
 import type { ChatMessageInterface } from '@/types/chat.type'
+import { TodoMessage } from '@/components/chat/todo-message'
 
 export const CalendarPage = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
@@ -350,6 +351,9 @@ export const CalendarPage = () => {
                   <div className="rounded-md border bg-muted/40 p-2 text-xs">
                     <p className="text-[11px] font-medium text-muted-foreground">응답</p>
                     <p className="mt-1 whitespace-pre-wrap">{todoAgentResult.content}</p>
+                    {todoAgentResult.todo && todoAgentResult.todo.length > 0 ? (
+                      <TodoMessage items={todoAgentResult.todo} />
+                    ) : null}
                   </div>
                 )}
               </div>

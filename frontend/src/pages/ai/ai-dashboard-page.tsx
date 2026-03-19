@@ -23,7 +23,7 @@ const AiDashboardPage = () => {
     if (!content || sendMutation.isPending) return
 
     setInputValue('')
-    sendMutation.mutate({ content })
+    sendMutation.mutate({ content, mode: 'CHAT' })
   }
 
   const handleKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
