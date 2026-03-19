@@ -20,13 +20,17 @@ import {
   useUpdateAgentRole,
 } from '@/hooks/queries/agent-query'
 import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
+import { createSchedule } from '@/services/schedule-service'
 import { cn } from '@/lib/utils'
 import type { AgentRoleDataInterface } from '@/types/agent.type'
 import type { ChatMessageInterface } from '@/types/chat.type'
+import type { ScheduleCreateBodyInterface } from '@/types/schedule.type'
 import { BookmarkPlus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownMessage } from '@/components/chat/markdown-message'
 import { TodoMessage } from '@/components/chat/todo-message'
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
 const emptyForm = {
   name: '',
@@ -34,7 +38,21 @@ const emptyForm = {
   systemPrompt: '',
 }
 
+interface TodoDraftItemInterface {
+  draftId: string
+  selected: boolean
+  title: string
+  description: string
+  estimateMinutes: number | null
+  priority: 'LOW' | 'MEDIUM' | 'HIGH'
+  status: 'TODO' | 'DONE'
+  scheduledDate: string
+  startAt: string
+  endAt: string
+}
+
 export const AgentListPage = () => {
+  const queryClient = useQueryClient()
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [chatAgentId, setChatAgentId] = useState<number | null>(null)
@@ -43,6 +61,9 @@ export const AgentListPage = () => {
   const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
   const [editingMemoryId, setEditingMemoryId] = useState<number | null>(null)
   const [editingMemoryContent, setEditingMemoryContent] = useState('')
+  const [todoDraftItems, setTodoDraftItems] = useState<TodoDraftItemInterface[]>([])
+  const [todoDraftSourceMessageId, setTodoDraftSourceMessageId] = useState<string | null>(null)
+  const [isTodoRegistering, setIsTodoRegistering] = useState(false)
 
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const sendLockRef = useRef(false)
@@ -113,6 +134,106 @@ export const AgentListPage = () => {
 
     return [...systemItems, ...olderChrono, ...newestNonSystem]
   }, [chatPages])
+
+  const buildEmptyDraftItem = (): TodoDraftItemInterface => {
+    const now = new Date()
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    const baseDate = `${yyyy}-${mm}-${dd}`
+    return {
+      draftId: `draft-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      selected: true,
+      title: '',
+      description: '',
+      estimateMinutes: 30,
+      priority: 'MEDIUM',
+      status: 'TODO',
+      scheduledDate: baseDate,
+      startAt: `${baseDate}T20:00:00`,
+      endAt: `${baseDate}T20:30:00`,
+    }
+  }
+
+  const openTodoDraftPanel = (message: ChatMessageInterface) => {
+    const sourceItems = message.todo ?? []
+    if (sourceItems.length === 0) return
+    setTodoDraftSourceMessageId(message.id)
+    setTodoDraftItems(
+      sourceItems.map((item, index) => ({
+        draftId: `${message.id}-${index}`,
+        selected: true,
+        title: item.title,
+        description: item.description ?? '',
+        estimateMinutes: item.estimateMinutes ?? null,
+        priority: item.priority,
+        status: item.status,
+        scheduledDate: item.scheduledDate,
+        startAt: item.startAt,
+        endAt: item.endAt,
+      })),
+    )
+  }
+
+  const updateTodoDraftItem = (
+    draftId: string,
+    updater: (previous: TodoDraftItemInterface) => TodoDraftItemInterface,
+  ) => {
+    setTodoDraftItems((previous) =>
+      previous.map((item) => (item.draftId === draftId ? updater(item) : item)),
+    )
+  }
+
+  const registerTodoDraftItems = async () => {
+    if (effectiveChatAgentId === null || isTodoRegistering) return
+    const selectedItems = todoDraftItems.filter((item) => item.selected)
+    if (selectedItems.length === 0) {
+      toast.error('등록할 투두를 선택하세요.')
+      return
+    }
+
+    const validItems = selectedItems.filter((item) => {
+      return (
+        item.title.trim() && item.scheduledDate.trim() && item.startAt.trim() && item.endAt.trim()
+      )
+    })
+    if (validItems.length === 0) {
+      toast.error('선택한 투두의 제목/날짜/시간을 확인하세요.')
+      return
+    }
+
+    setIsTodoRegistering(true)
+    try {
+      const requests: ScheduleCreateBodyInterface[] = validItems.map((item) => ({
+        type: 'TODO',
+        title: item.title.trim(),
+        description: item.description.trim() || undefined,
+        occurrenceDate: item.scheduledDate,
+        startAt: item.startAt,
+        endAt: item.endAt,
+        agentId: effectiveChatAgentId,
+      }))
+
+      const results = await Promise.allSettled(requests.map((body) => createSchedule(body)))
+      const successCount = results.filter((result) => result.status === 'fulfilled').length
+      const failCount = results.length - successCount
+
+      if (successCount > 0) {
+        await queryClient.invalidateQueries({ queryKey: ['schedule'] })
+      }
+
+      if (failCount === 0) {
+        toast.success(`${successCount}개의 투두를 캘린더에 등록했습니다.`)
+        setTodoDraftItems((previous) => previous.filter((item) => !item.selected))
+      } else if (successCount > 0) {
+        toast.error(`${successCount}개 성공, ${failCount}개 실패했습니다.`)
+      } else {
+        toast.error('투두 등록에 실패했습니다.')
+      }
+    } finally {
+      setIsTodoRegistering(false)
+    }
+  }
 
   const handleChatScroll: React.UIEventHandler<HTMLDivElement> = async (event) => {
     const el = event.currentTarget
@@ -242,7 +363,21 @@ export const AgentListPage = () => {
           ) : (
             <>
               <MarkdownMessage content={message.content} />
-              {todo_items.length > 0 ? <TodoMessage items={todo_items} /> : null}
+              {todo_items.length > 0 ? (
+                <>
+                  <TodoMessage items={todo_items} />
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      onClick={() => openTodoDraftPanel(message)}
+                    >
+                      투두 편집 패널로 열기
+                    </Button>
+                  </div>
+                </>
+              ) : null}
             </>
           )}
         </div>
@@ -469,80 +604,230 @@ export const AgentListPage = () => {
             </CardContent>
           </Card>
         ) : (
-          <Card className="w-full max-w-2xl">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold">
-                  {agents.find((a) => a.id === effectiveChatAgentId)?.name ?? '에이전트 대화'}
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  선택한 에이전트와 개별적으로 대화할 수 있습니다.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
-                    const target = agents.find((a) => a.id === effectiveChatAgentId) ?? null
-                    if (target) {
-                      handleSelectAgentForSettings(target)
-                    } else {
-                      setIsSettingsOpen(true)
-                    }
-                  }}
-                >
-                  에이전트 설정
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="flex min-h-0 flex-1 flex-col gap-3 pb-3">
-              <div
-                ref={chatScrollRef}
-                className="flex-1 space-y-2 overflow-auto rounded-md border bg-background p-3 max-h-[min(1000px,calc(100dvh-320px))]"
-                onScroll={handleChatScroll}
-              >
-                {isChatPending ? (
-                  <p className="text-xs text-muted-foreground">대화 내역을 불러오는 중입니다...</p>
-                ) : chatMessages.length === 0 ? (
+          <div className="flex w-full gap-4">
+            <Card className="w-full max-w-2xl">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold">
+                    {agents.find((a) => a.id === effectiveChatAgentId)?.name ?? '에이전트 대화'}
+                  </h2>
                   <p className="text-xs text-muted-foreground">
-                    아직 대화가 없습니다. 아래 입력창에 질문이나 요청을 입력해 보세요.
+                    선택한 에이전트와 개별적으로 대화할 수 있습니다.
                   </p>
-                ) : (
-                  chatMessages.map(renderChatMessage)
-                )}
-              </div>
-              <div className="space-y-2">
-                <Textarea
-                  value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
-                  onKeyDown={handleChatKeyDown}
-                  rows={3}
-                  placeholder="메시지를 입력하세요. (Shift+Enter 줄바꿈, Enter 전송)"
-                />
-                <div className="flex items-center justify-between gap-2">
-                  <Select value={chatMode} onValueChange={(v) => setChatMode(v as 'CHAT' | 'TODO')}>
-                    <SelectTrigger size="sm" className="min-w-24">
-                      <SelectValue placeholder="모드" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CHAT">Chat</SelectItem>
-                      <SelectItem value="TODO">Todo</SelectItem>
-                    </SelectContent>
-                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
                   <Button
                     type="button"
-                    size="sm"
-                    onClick={handleSendChat}
-                    disabled={!chatInput.trim() || sendChatMutation.isPending}
+                    size="xs"
+                    variant="outline"
+                    onClick={() => {
+                      const target = agents.find((a) => a.id === effectiveChatAgentId) ?? null
+                      if (target) {
+                        handleSelectAgentForSettings(target)
+                      } else {
+                        setIsSettingsOpen(true)
+                      }
+                    }}
                   >
-                    보내기
+                    에이전트 설정
                   </Button>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardHeader>
+              <CardContent className="flex min-h-0 flex-1 flex-col gap-3 pb-3">
+                <div
+                  ref={chatScrollRef}
+                  className="flex-1 space-y-2 overflow-auto rounded-md border bg-background p-3 max-h-[min(1000px,calc(100dvh-320px))]"
+                  onScroll={handleChatScroll}
+                >
+                  {isChatPending ? (
+                    <p className="text-xs text-muted-foreground">
+                      대화 내역을 불러오는 중입니다...
+                    </p>
+                  ) : chatMessages.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      아직 대화가 없습니다. 아래 입력창에 질문이나 요청을 입력해 보세요.
+                    </p>
+                  ) : (
+                    chatMessages.map(renderChatMessage)
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Textarea
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={handleChatKeyDown}
+                    rows={3}
+                    placeholder="메시지를 입력하세요. (Shift+Enter 줄바꿈, Enter 전송)"
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <Select
+                      value={chatMode}
+                      onValueChange={(v) => setChatMode(v as 'CHAT' | 'TODO')}
+                    >
+                      <SelectTrigger size="sm" className="min-w-24">
+                        <SelectValue placeholder="모드" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CHAT">Chat</SelectItem>
+                        <SelectItem value="TODO">Todo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSendChat}
+                      disabled={!chatInput.trim() || sendChatMutation.isPending}
+                    >
+                      보내기
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {todoDraftItems.length > 0 ? (
+              <Card className="w-md shrink-0">
+                <CardHeader className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold">투두 편집 패널</h3>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      onClick={() => {
+                        setTodoDraftItems([])
+                        setTodoDraftSourceMessageId(null)
+                      }}
+                    >
+                      닫기
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    메시지 #{todoDraftSourceMessageId}에서 가져온 투두입니다. 수정/부분 삭제 후
+                    등록하세요.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="max-h-[min(1000px,calc(100dvh-270px))] space-y-2 overflow-auto pr-1">
+                    {todoDraftItems.map((item) => (
+                      <div key={item.draftId} className="space-y-2 rounded-md border p-2">
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center gap-2 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={item.selected}
+                              onChange={(event) => {
+                                updateTodoDraftItem(item.draftId, (previous) => ({
+                                  ...previous,
+                                  selected: event.target.checked,
+                                }))
+                              }}
+                            />
+                            등록 대상
+                          </label>
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            onClick={() => {
+                              setTodoDraftItems((previous) =>
+                                previous.filter((draftItem) => draftItem.draftId !== item.draftId),
+                              )
+                            }}
+                          >
+                            삭제
+                          </Button>
+                        </div>
+
+                        <Input
+                          value={item.title}
+                          onChange={(event) =>
+                            updateTodoDraftItem(item.draftId, (previous) => ({
+                              ...previous,
+                              title: event.target.value,
+                            }))
+                          }
+                          placeholder="제목"
+                        />
+                        <Textarea
+                          rows={2}
+                          value={item.description}
+                          onChange={(event) =>
+                            updateTodoDraftItem(item.draftId, (previous) => ({
+                              ...previous,
+                              description: event.target.value,
+                            }))
+                          }
+                          placeholder="설명"
+                        />
+                        <div className="grid grid-cols-1 gap-2">
+                          <Input
+                            type="date"
+                            value={item.scheduledDate}
+                            onChange={(event) =>
+                              updateTodoDraftItem(item.draftId, (previous) => {
+                                const nextDate = event.target.value
+                                const nextStartTime = previous.startAt.slice(11, 19) || '20:00:00'
+                                const nextEndTime = previous.endAt.slice(11, 19) || '21:00:00'
+                                return {
+                                  ...previous,
+                                  scheduledDate: nextDate,
+                                  startAt: `${nextDate}T${nextStartTime}`,
+                                  endAt: `${nextDate}T${nextEndTime}`,
+                                }
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            type="time"
+                            value={item.startAt.slice(11, 16)}
+                            onChange={(event) =>
+                              updateTodoDraftItem(item.draftId, (previous) => ({
+                                ...previous,
+                                startAt: `${previous.scheduledDate}T${event.target.value}:00`,
+                              }))
+                            }
+                          />
+                          <Input
+                            type="time"
+                            value={item.endAt.slice(11, 16)}
+                            onChange={(event) =>
+                              updateTodoDraftItem(item.draftId, (previous) => ({
+                                ...previous,
+                                endAt: `${previous.scheduledDate}T${event.target.value}:00`,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      onClick={() =>
+                        setTodoDraftItems((previous) => [...previous, buildEmptyDraftItem()])
+                      }
+                    >
+                      + 항목 추가
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={registerTodoDraftItems}
+                      disabled={isTodoRegistering}
+                    >
+                      선택 항목 캘린더 등록
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
         )}
       </div>
     </div>
