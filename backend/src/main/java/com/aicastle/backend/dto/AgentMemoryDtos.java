@@ -10,4 +10,6 @@ public class AgentMemoryDtos {
   public record AgentPinnedMemoryListResponse(List<AgentPinnedMemoryResponse> items) {}
 
   public record AgentPinnedMemoryCreateRequest(String content) {}
+
+  public record AgentPinnedMemoryUpdateRequest(String content) {}
 }

@@ -11,14 +11,19 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  useAgentPinnedMemoryList,
   useAgentRoleList,
+  useCreateAgentPinnedMemory,
   useCreateAgentRole,
+  useDeleteAgentPinnedMemory,
+  useUpdateAgentPinnedMemory,
   useUpdateAgentRole,
 } from '@/hooks/queries/agent-query'
 import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
 import { cn } from '@/lib/utils'
 import type { AgentRoleDataInterface } from '@/types/agent.type'
 import type { ChatMessageInterface } from '@/types/chat.type'
+import { BookmarkPlus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownMessage } from '@/components/chat/markdown-message'
 
@@ -32,8 +37,11 @@ export const AgentListPage = () => {
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [chatAgentId, setChatAgentId] = useState<number | null>(null)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
+  const [editingMemoryId, setEditingMemoryId] = useState<number | null>(null)
+  const [editingMemoryContent, setEditingMemoryContent] = useState('')
 
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const sendLockRef = useRef(false)
@@ -56,6 +64,11 @@ export const AgentListPage = () => {
 
   const createMutation = useCreateAgentRole()
   const updateMutation = useUpdateAgentRole()
+  const createPinnedMemoryMutation = useCreateAgentPinnedMemory(effectiveChatAgentId ?? 0)
+  const { data: pinnedMemoryItems = [], isPending: isPinnedMemoryPending } =
+    useAgentPinnedMemoryList(selectedAgentId ?? 0)
+  const deletePinnedMemoryMutation = useDeleteAgentPinnedMemory(selectedAgentId ?? 0)
+  const updatePinnedMemoryMutation = useUpdateAgentPinnedMemory(selectedAgentId ?? 0)
   const sendChatMutation = useSendAgentChatMessage(effectiveChatAgentId ?? 0, {
     onSettled: () => {
       sendLockRef.current = false
@@ -111,6 +124,7 @@ export const AgentListPage = () => {
 
   // 새 에이전트 추가 버튼 클릭 핸들러
   const handleChangeNew = () => {
+    setIsSettingsOpen(true)
     setSelectedAgentId(null)
     setForm(emptyForm)
     setChatAgentId(null)
@@ -143,6 +157,7 @@ export const AgentListPage = () => {
 
   // 에이전트 설정 버튼 클릭 핸들러
   const handleSelectAgentForSettings = (agent: AgentRoleDataInterface) => {
+    setIsSettingsOpen(true)
     setChatAgentId(null)
     setSelectedAgentId(agent.id)
     setForm({
@@ -154,6 +169,7 @@ export const AgentListPage = () => {
 
   // 채팅 창 열기 버튼 클릭 핸들러
   const handleOpenChat = (agent: AgentRoleDataInterface) => {
+    setIsSettingsOpen(false)
     setChatAgentId(agent.id)
     setSelectedAgentId(agent.id)
     setForm({
@@ -188,12 +204,27 @@ export const AgentListPage = () => {
   const renderChatMessage = (message: ChatMessageInterface) => {
     const is_user = message.role === 'USER'
     const is_assistant = message.role === 'ASSISTANT'
+    const can_save_memory = is_user || is_assistant
 
     return (
       <div
         key={message.id}
-        className={cn('flex w-full', is_user ? 'justify-end' : 'justify-start')}
+        className={cn('flex w-full items-end gap-2', is_user ? 'justify-end' : 'justify-start')}
       >
+        {is_user && can_save_memory && (
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="outline"
+            className="shrink-0"
+            title="메모리 저장"
+            aria-label="메모리 저장"
+            onClick={() => createPinnedMemoryMutation.mutate({ content: message.content })}
+            disabled={createPinnedMemoryMutation.isPending || !effectiveChatAgentId}
+          >
+            <BookmarkPlus />
+          </Button>
+        )}
         <div
           className={cn(
             'max-w-[70%] rounded-lg px-3 py-2 text-xs',
@@ -210,6 +241,20 @@ export const AgentListPage = () => {
             <MarkdownMessage content={message.content} />
           )}
         </div>
+        {!is_user && can_save_memory && (
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="outline"
+            className="shrink-0"
+            title="메모리 저장"
+            aria-label="메모리 저장"
+            onClick={() => createPinnedMemoryMutation.mutate({ content: message.content })}
+            disabled={createPinnedMemoryMutation.isPending || !effectiveChatAgentId}
+          >
+            <BookmarkPlus />
+          </Button>
+        )}
       </div>
     )
   }
@@ -254,7 +299,7 @@ export const AgentListPage = () => {
       </div>
 
       <div className="flex min-w-0 flex-1">
-        {effectiveChatAgentId === null ? (
+        {isSettingsOpen || effectiveChatAgentId === null ? (
           <Card className="w-full max-w-2xl">
             <CardHeader>
               <h2 className="text-sm font-semibold">
@@ -314,6 +359,108 @@ export const AgentListPage = () => {
                   {selectedAgentId === null ? '에이전트 생성' : '프롬프트 저장'}
                 </Button>
               </div>
+              {selectedAgentId !== null && (
+                <div className="grid gap-2">
+                  <Label>저장된 메모리</Label>
+                  <div className="flex flex-col gap-2 max-h-[600px] overflow-auto">
+                    {isPinnedMemoryPending ? (
+                      <p className="text-xs text-muted-foreground">메모리를 불러오는 중입니다...</p>
+                    ) : pinnedMemoryItems.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">저장된 메모리가 없습니다.</p>
+                    ) : (
+                      pinnedMemoryItems.map((memory) => (
+                        <div
+                          key={memory.id}
+                          className="flex items-start justify-between gap-3 rounded border bg-card p-5"
+                        >
+                          {editingMemoryId === memory.id ? (
+                            <div className="flex w-full flex-col gap-2">
+                              <Textarea
+                                value={editingMemoryContent}
+                                onChange={(event) => setEditingMemoryContent(event.target.value)}
+                                rows={4}
+                                placeholder="메모리 내용을 수정하세요."
+                              />
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  size="xs"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingMemoryId(null)
+                                    setEditingMemoryContent('')
+                                  }}
+                                  disabled={updatePinnedMemoryMutation.isPending}
+                                >
+                                  취소
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="xs"
+                                  onClick={() => {
+                                    const content = editingMemoryContent.trim()
+                                    if (!content) return
+                                    updatePinnedMemoryMutation.mutate(
+                                      {
+                                        memory_id: memory.id,
+                                        body: { content },
+                                      },
+                                      {
+                                        onSuccess: () => {
+                                          setEditingMemoryId(null)
+                                          setEditingMemoryContent('')
+                                        },
+                                      },
+                                    )
+                                  }}
+                                  disabled={updatePinnedMemoryMutation.isPending}
+                                >
+                                  저장
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <MarkdownMessage content={memory.content} className="text-xs" />
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="xs"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingMemoryId(memory.id)
+                                    setEditingMemoryContent(memory.content)
+                                  }}
+                                  disabled={
+                                    deletePinnedMemoryMutation.isPending ||
+                                    updatePinnedMemoryMutation.isPending
+                                  }
+                                >
+                                  수정
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="xs"
+                                  variant="outline"
+                                  onClick={() =>
+                                    deletePinnedMemoryMutation.mutate({ memory_id: memory.id })
+                                  }
+                                  disabled={
+                                    deletePinnedMemoryMutation.isPending ||
+                                    updatePinnedMemoryMutation.isPending
+                                  }
+                                >
+                                  삭제
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -337,7 +484,7 @@ export const AgentListPage = () => {
                     if (target) {
                       handleSelectAgentForSettings(target)
                     } else {
-                      setChatAgentId(null)
+                      setIsSettingsOpen(true)
                     }
                   }}
                 >

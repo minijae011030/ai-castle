@@ -5,6 +5,7 @@ import {
   getActiveAgentList,
   getAgentPinnedMemoryList,
   getAgentRoleList,
+  updateAgentPinnedMemory,
   updateAgentRole,
 } from '@/services/agent-service'
 import type {
@@ -16,6 +17,7 @@ import type {
 import type {
   AgentPinnedMemoryCreateBodyInterface,
   AgentPinnedMemoryInterface,
+  AgentPinnedMemoryUpdateBodyInterface,
 } from '@/types/agent-memory.type'
 import {
   useMutation,
@@ -125,6 +127,39 @@ export const useDeleteAgentPinnedMemory = (
     },
     onError: (error) => {
       toast.error(error.message ?? '메모리를 삭제하지 못했습니다.')
+    },
+    ...options,
+  })
+}
+
+// 에이전트 고정 메모리 수정 훅
+export const useUpdateAgentPinnedMemory = (
+  agent_id: number,
+  options?: UseMutationOptions<
+    AgentPinnedMemoryInterface,
+    Error,
+    { memory_id: number; body: AgentPinnedMemoryUpdateBodyInterface }
+  >,
+) => {
+  const query_client = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      memory_id,
+      body,
+    }: {
+      memory_id: number
+      body: AgentPinnedMemoryUpdateBodyInterface
+    }) => {
+      const result = await updateAgentPinnedMemory(agent_id, memory_id, body)
+      return result
+    },
+    onSuccess: () => {
+      query_client.invalidateQueries({ queryKey: agent_query_keys.pinned_memory_list(agent_id) })
+      toast.success('메모리가 수정되었습니다.')
+    },
+    onError: (error) => {
+      toast.error(error.message ?? '메모리를 수정하지 못했습니다.')
     },
     ...options,
   })

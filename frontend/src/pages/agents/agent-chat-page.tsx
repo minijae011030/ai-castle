@@ -9,8 +9,9 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
-import { useAgentRoleList } from '@/hooks/queries/agent-query'
+import { useAgentRoleList, useCreateAgentPinnedMemory } from '@/hooks/queries/agent-query'
 import type { ChatMessageInterface } from '@/types/chat.type'
+import { BookmarkPlus } from 'lucide-react'
 import { useRouter } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Route } from '@/routes/_protected/agents/$agentId.chat'
@@ -44,6 +45,7 @@ export const AgentChatPage = () => {
       sendLockRef.current = false
     },
   })
+  const createPinnedMemoryMutation = useCreateAgentPinnedMemory(agentId)
 
   // 에이전트 ID 유효성 검사
   useEffect(() => {
@@ -116,9 +118,27 @@ export const AgentChatPage = () => {
   const renderMessage = (message: ChatMessageInterface) => {
     const isUser = message.role === 'USER'
     const isAssistant = message.role === 'ASSISTANT'
+    const canSaveMemory = isUser || isAssistant
 
     return (
-      <div key={message.id} className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}>
+      <div
+        key={message.id}
+        className={cn('flex w-full items-end gap-2', isUser ? 'justify-end' : 'justify-start')}
+      >
+        {!isUser && canSaveMemory && (
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="outline"
+            className="shrink-0"
+            title="메모리 저장"
+            aria-label="메모리 저장"
+            onClick={() => createPinnedMemoryMutation.mutate({ content: message.content })}
+            disabled={createPinnedMemoryMutation.isPending}
+          >
+            <BookmarkPlus />
+          </Button>
+        )}
         <div
           className={cn(
             'max-w-[70%] rounded-lg px-3 py-2 text-xs',
@@ -135,6 +155,20 @@ export const AgentChatPage = () => {
             <MarkdownMessage content={message.content} />
           )}
         </div>
+        {isUser && canSaveMemory && (
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="outline"
+            className="shrink-0"
+            title="메모리 저장"
+            aria-label="메모리 저장"
+            onClick={() => createPinnedMemoryMutation.mutate({ content: message.content })}
+            disabled={createPinnedMemoryMutation.isPending}
+          >
+            <BookmarkPlus />
+          </Button>
+        )}
       </div>
     )
   }

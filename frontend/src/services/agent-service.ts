@@ -15,6 +15,8 @@ import type {
   AgentPinnedMemoryDeleteResponseInterface,
   AgentPinnedMemoryInterface,
   AgentPinnedMemoryListResponseInterface,
+  AgentPinnedMemoryUpdateBodyInterface,
+  AgentPinnedMemoryUpdateResponseInterface,
 } from '@/types/agent-memory.type'
 
 export async function getAgentRoleList(): Promise<AgentRoleDataInterface[]> {
@@ -106,4 +108,21 @@ export async function deleteAgentPinnedMemory(agent_id: number, memory_id: numbe
   if (res.status !== 200) {
     throw new Error(res.message ?? '메모리를 삭제하지 못했습니다.')
   }
+}
+
+export async function updateAgentPinnedMemory(
+  agent_id: number,
+  memory_id: number,
+  body: AgentPinnedMemoryUpdateBodyInterface,
+): Promise<AgentPinnedMemoryInterface> {
+  const res = await API.patch<
+    AgentPinnedMemoryUpdateResponseInterface,
+    AgentPinnedMemoryUpdateBodyInterface
+  >(`/api/agents/${agent_id}/memory/${memory_id}`, body)
+
+  if (res.status !== 200 || !res.data) {
+    throw new Error(res.message ?? '메모리를 수정하지 못했습니다.')
+  }
+
+  return res.data
 }

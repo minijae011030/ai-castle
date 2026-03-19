@@ -18,6 +18,10 @@ export interface AgentPinnedMemoryCreateBodyInterface {
   content: string
 }
 
+export interface AgentPinnedMemoryUpdateBodyInterface {
+  content: string
+}
+
 export interface AgentPinnedMemoryCreateResponseInterface {
   status: number
   message: string
@@ -28,4 +32,10 @@ export interface AgentPinnedMemoryDeleteResponseInterface {
   status: number
   message: string
   data: null
+}
+
+export interface AgentPinnedMemoryUpdateResponseInterface {
+  status: number
+  message: string
+  data: AgentPinnedMemoryInterface | null
 }

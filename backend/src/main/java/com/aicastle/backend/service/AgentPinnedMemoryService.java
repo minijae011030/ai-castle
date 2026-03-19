@@ -3,6 +3,7 @@ package com.aicastle.backend.service;
 import com.aicastle.backend.dto.AgentMemoryDtos.AgentPinnedMemoryCreateRequest;
 import com.aicastle.backend.dto.AgentMemoryDtos.AgentPinnedMemoryListResponse;
 import com.aicastle.backend.dto.AgentMemoryDtos.AgentPinnedMemoryResponse;
+import com.aicastle.backend.dto.AgentMemoryDtos.AgentPinnedMemoryUpdateRequest;
 import com.aicastle.backend.entity.AgentPinnedMemory;
 import com.aicastle.backend.entity.AgentRole;
 import com.aicastle.backend.entity.UserAccount;
@@ -91,6 +92,37 @@ public class AgentPinnedMemoryService {
     }
 
     agentPinnedMemoryRepository.delete(memory);
+  }
+
+  @Transactional
+  public AgentPinnedMemoryResponse update(
+      Long userId, Long agentId, Long memoryId, AgentPinnedMemoryUpdateRequest request) {
+    String content = request == null || request.content() == null ? "" : request.content().trim();
+    if (content.isBlank()) {
+      throw new IllegalArgumentException("메모리 내용은 비어 있을 수 없습니다.");
+    }
+    if (content.length() > 2000) {
+      throw new IllegalArgumentException("메모리 내용은 2000자를 초과할 수 없습니다.");
+    }
+
+    AgentPinnedMemory memory =
+        agentPinnedMemoryRepository
+            .findById(memoryId)
+            .orElseThrow(() -> new IllegalArgumentException("메모리를 찾을 수 없습니다."));
+
+    if (memory.getUserAccount() == null
+        || memory.getUserAccount().getId() == null
+        || !memory.getUserAccount().getId().equals(userId)) {
+      throw new IllegalArgumentException("본인의 메모리만 수정할 수 있습니다.");
+    }
+    if (memory.getAgentRole() == null
+        || memory.getAgentRole().getId() == null
+        || !memory.getAgentRole().getId().equals(agentId)) {
+      throw new IllegalArgumentException("잘못된 에이전트 메모리입니다.");
+    }
+
+    memory.setContent(content);
+    return toResponse(memory);
   }
 
   private AgentPinnedMemoryResponse toResponse(AgentPinnedMemory memory) {
