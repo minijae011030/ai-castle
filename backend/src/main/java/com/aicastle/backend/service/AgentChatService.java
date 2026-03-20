@@ -163,7 +163,9 @@ public class AgentChatService {
         chatMessageRepository.findTop50ByUserAccount_IdAndAgentRole_IdOrderByCreatedAtDesc(
             userId, agentId);
 
-    chatMessageRepository.save(new ChatMessage(user, agent, ChatMessage.Role.USER, content));
+    String userImageUrlsJson = toImageUrlsJson(imageUrls);
+    chatMessageRepository.save(
+        new ChatMessage(user, agent, ChatMessage.Role.USER, content, userImageUrlsJson));
 
     String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
     ChatMode mode = request.mode();
@@ -244,11 +246,12 @@ public class AgentChatService {
     if (role == ChatMessageRole.ASSISTANT) {
       TodoJsonParsed parsed = tryParseTodoJson(rawContent);
       if (parsed != null) {
-        return new ChatMessageResponse(id, role, parsed.text(), createdAt, parsed.todo());
+        return new ChatMessageResponse(
+            id, role, parsed.text(), createdAt, parsed.todo(), parseImageUrls(message));
       }
     }
 
-    return ChatMessageResponse.of(id, role, rawContent, createdAt);
+    return new ChatMessageResponse(id, role, rawContent, createdAt, null, parseImageUrls(message));
   }
 
   // OpenAI vision 입력을 위해, user message content를 multipart 형식으로 만든다.
@@ -339,6 +342,50 @@ public class AgentChatService {
       return parsed;
     } catch (Exception ignored) {
       return defaultValue;
+    }
+  }
+
+  private String toImageUrlsJson(List<String> imageUrls) {
+    if (imageUrls == null || imageUrls.isEmpty()) return null;
+    List<String> sanitizedImageUrls = new ArrayList<>();
+    for (String imageUrl : imageUrls) {
+      if (imageUrl == null) continue;
+      String trimmedImageUrl = imageUrl.trim();
+      if (trimmedImageUrl.isEmpty()) continue;
+      sanitizedImageUrls.add(trimmedImageUrl);
+    }
+    if (sanitizedImageUrls.isEmpty()) return null;
+    try {
+      return objectMapper.writeValueAsString(sanitizedImageUrls);
+    } catch (Exception e) {
+      log.warn("이미지 URL JSON 직렬화에 실패했습니다. message={}", e.getMessage());
+      return null;
+    }
+  }
+
+  private List<String> parseImageUrls(ChatMessage message) {
+    if (message == null
+        || message.getImageUrlsJson() == null
+        || message.getImageUrlsJson().isBlank()) {
+      return null;
+    }
+    try {
+      List<String> parsed =
+          objectMapper.readValue(
+              message.getImageUrlsJson(),
+              objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+      if (parsed == null || parsed.isEmpty()) return null;
+      List<String> sanitizedImageUrls = new ArrayList<>();
+      for (String imageUrl : parsed) {
+        if (imageUrl == null) continue;
+        String trimmedImageUrl = imageUrl.trim();
+        if (trimmedImageUrl.isEmpty()) continue;
+        sanitizedImageUrls.add(trimmedImageUrl);
+      }
+      return sanitizedImageUrls.isEmpty() ? null : sanitizedImageUrls;
+    } catch (Exception e) {
+      log.warn("이미지 URL JSON 역직렬화에 실패했습니다. message={}", e.getMessage());
+      return null;
     }
   }
 }

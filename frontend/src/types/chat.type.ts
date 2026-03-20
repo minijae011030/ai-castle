@@ -20,6 +20,7 @@ export interface ChatMessageInterface {
   content: string
   createdAt: string
   todo?: TodoItemInterface[] | null
+  imageUrls?: string[] | null
 }
 
 export interface MainChatHistoryResponseInterface {

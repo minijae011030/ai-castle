@@ -62,7 +62,7 @@ export const AgentListPage = () => {
   const [chatInput, setChatInput] = useState('')
   const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
   const [chatImageDrafts, setChatImageDrafts] = useState<
-    Array<{ id: string; file: File; preview_data_url: string; mime_type: string }>
+    Array<{ id: string; file: File; preview_object_url: string; mime_type: string }>
   >([])
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([])
   const [isUploadingChatImages, setIsUploadingChatImages] = useState(false)
@@ -309,21 +309,19 @@ export const AgentListPage = () => {
     })
   }
 
-  const fileToDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(new Error('파일을 읽는 중 오류가 발생했습니다.'))
-      reader.readAsDataURL(file)
-    })
-  }
-
   const makeRandomId = (): string => {
     // Safari/환경에 따라 randomUUID 미지원이 있을 수 있어 방어적으로 처리
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID()
     }
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  }
+
+  const revokeDraftObjectUrls = (drafts: Array<{ preview_object_url: string }>) => {
+    for (const draft of drafts) {
+      if (!draft.preview_object_url) continue
+      URL.revokeObjectURL(draft.preview_object_url)
+    }
   }
 
   const handlePickChatImage: React.ChangeEventHandler<HTMLInputElement> = async (event) => {
@@ -343,15 +341,18 @@ export const AgentListPage = () => {
     }
 
     try {
-      const preview_data_url = await fileToDataUrl(file)
-      setChatImageDrafts([
-        {
-          id: `chat-image-${makeRandomId()}`,
-          file,
-          preview_data_url,
-          mime_type: file.type,
-        },
-      ])
+      const preview_object_url = URL.createObjectURL(file)
+      setChatImageDrafts((previous) => {
+        revokeDraftObjectUrls(previous)
+        return [
+          {
+            id: `chat-image-${makeRandomId()}`,
+            file,
+            preview_object_url,
+            mime_type: file.type,
+          },
+        ]
+      })
       setUploadedImageUrls([])
     } catch {
       toast.error('이미지 미리보기 생성에 실패했습니다.')
@@ -398,7 +399,10 @@ export const AgentListPage = () => {
         const urls = await uploadChatImagesToFirebase()
         imageUrlsToSend = urls
         setUploadedImageUrls(urls)
-        setChatImageDrafts([])
+        setChatImageDrafts((previous) => {
+          revokeDraftObjectUrls(previous)
+          return []
+        })
       } catch {
         toast.error('이미지 업로드에 실패했습니다.')
         setChatInput(content)
@@ -412,6 +416,12 @@ export const AgentListPage = () => {
 
     sendChatMutation.mutate({ content, mode: chatMode, imageUrls: imageUrlsToSend })
   }
+
+  useEffect(() => {
+    return () => {
+      revokeDraftObjectUrls(chatImageDrafts)
+    }
+  }, [chatImageDrafts])
 
   // 채팅 입력창 엔터키 누르면 전송 핸들러
   const handleChatKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
@@ -429,6 +439,7 @@ export const AgentListPage = () => {
     const is_assistant = message.role === 'ASSISTANT'
     const can_save_memory = is_user || is_assistant
     const todo_items = message.todo?.filter(Boolean) ?? []
+    const message_image_urls = (message.imageUrls ?? []).filter((image_url) => Boolean(image_url))
 
     return (
       <div
@@ -449,38 +460,60 @@ export const AgentListPage = () => {
             <BookmarkPlus />
           </Button>
         )}
-        <div
-          className={cn(
-            'max-w-[70%] rounded-lg px-3 py-2 text-xs',
-            is_user
-              ? 'bg-primary text-primary-foreground'
-              : is_assistant
-                ? 'bg-muted text-foreground'
-                : 'bg-secondary text-secondary-foreground',
-          )}
-        >
-          {is_user ? (
-            <div className="whitespace-pre-wrap wrap-break-word">{message.content}</div>
-          ) : (
-            <>
-              <MarkdownMessage content={message.content} />
-              {todo_items.length > 0 ? (
-                <>
-                  <TodoMessage items={todo_items} />
-                  <div className="mt-2 flex justify-end">
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      onClick={() => openTodoDraftPanel(message)}
-                    >
-                      투두 편집 패널로 열기
-                    </Button>
-                  </div>
-                </>
-              ) : null}
-            </>
-          )}
+        <div className="max-w-[70%]">
+          {is_user && message_image_urls.length > 0 ? (
+            <div className="mb-2 grid grid-cols-2 gap-2">
+              {message_image_urls.map((image_url) => (
+                <a
+                  key={`${message.id}-${image_url}`}
+                  href={image_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block"
+                >
+                  <img
+                    src={image_url}
+                    alt="첨부 이미지"
+                    className="h-28 w-full rounded border object-cover"
+                    loading="lazy"
+                  />
+                </a>
+              ))}
+            </div>
+          ) : null}
+          <div
+            className={cn(
+              'rounded-lg px-3 py-2 text-xs',
+              is_user
+                ? 'bg-primary text-primary-foreground'
+                : is_assistant
+                  ? 'bg-muted text-foreground'
+                  : 'bg-secondary text-secondary-foreground',
+            )}
+          >
+            {is_user ? (
+              <div className="whitespace-pre-wrap wrap-break-word">{message.content}</div>
+            ) : (
+              <>
+                <MarkdownMessage content={message.content} />
+                {todo_items.length > 0 ? (
+                  <>
+                    <TodoMessage items={todo_items} />
+                    <div className="mt-2 flex justify-end">
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => openTodoDraftPanel(message)}
+                      >
+                        투두 편집 패널로 열기
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
+              </>
+            )}
+          </div>
         </div>
         {!is_user && can_save_memory && (
           <Button
@@ -778,7 +811,7 @@ export const AgentListPage = () => {
                   {chatImageDrafts.length > 0 ? (
                     <div className="flex items-start gap-2 rounded-md border bg-card p-2">
                       <img
-                        src={chatImageDrafts[0]?.preview_data_url}
+                        src={chatImageDrafts[0]?.preview_object_url}
                         alt="이미지 미리보기"
                         className="h-20 w-20 rounded border object-cover"
                       />
@@ -795,7 +828,10 @@ export const AgentListPage = () => {
                             size="xs"
                             variant="outline"
                             onClick={() => {
-                              setChatImageDrafts([])
+                              setChatImageDrafts((previous) => {
+                                revokeDraftObjectUrls(previous)
+                                return []
+                              })
                               setUploadedImageUrls([])
                               if (chatImageInputRef.current) chatImageInputRef.current.value = ''
                             }}

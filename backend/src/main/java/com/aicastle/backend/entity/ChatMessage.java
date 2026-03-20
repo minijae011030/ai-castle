@@ -39,6 +39,9 @@ public class ChatMessage extends BaseTimeEntity {
   @Column(name = "content", nullable = false, columnDefinition = "TEXT")
   private String content;
 
+  @Column(name = "image_urls_json", columnDefinition = "TEXT")
+  private String imageUrlsJson;
+
   protected ChatMessage() {}
 
   public ChatMessage(UserAccount userAccount, AgentRole agentRole, Role role, String content) {
@@ -46,5 +49,18 @@ public class ChatMessage extends BaseTimeEntity {
     this.agentRole = agentRole;
     this.role = role;
     this.content = content;
+  }
+
+  public ChatMessage(
+      UserAccount userAccount,
+      AgentRole agentRole,
+      Role role,
+      String content,
+      String imageUrlsJson) {
+    this.userAccount = userAccount;
+    this.agentRole = agentRole;
+    this.role = role;
+    this.content = content;
+    this.imageUrlsJson = imageUrlsJson;
   }
 }

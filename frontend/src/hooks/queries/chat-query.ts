@@ -122,6 +122,7 @@ export const useSendAgentChatMessage = (
         role: 'USER',
         content: variables.content,
         createdAt: now,
+        imageUrls: variables.imageUrls ?? null,
       }
 
       query_client.setQueryData(chat_query_keys.agent_infinite(agent_id), (old) => {

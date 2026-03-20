@@ -45,11 +45,12 @@ public class ChatDtos {
       ChatMessageRole role,
       String content,
       Instant createdAt,
-      java.util.List<TodoItem> todo) {
+      java.util.List<TodoItem> todo,
+      java.util.List<String> imageUrls) {
 
     public static ChatMessageResponse of(
         String id, ChatMessageRole role, String content, Instant createdAt) {
-      return new ChatMessageResponse(id, role, content, createdAt, null);
+      return new ChatMessageResponse(id, role, content, createdAt, null, null);
     }
   }
 
