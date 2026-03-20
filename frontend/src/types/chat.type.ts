@@ -31,6 +31,7 @@ export interface MainChatHistoryResponseInterface {
 export interface MainChatSendBodyInterface {
   content: string
   mode: 'CHAT' | 'TODO'
+  imageUrls?: string[]
 }
 
 export interface MainChatSendResponseInterface {
@@ -54,6 +55,7 @@ export interface AgentChatHistoryPageDataInterface {
 export interface AgentChatSendBodyInterface {
   content: string
   mode: 'CHAT' | 'TODO'
+  imageUrls?: string[]
 }
 
 export interface AgentChatSendResponseInterface {

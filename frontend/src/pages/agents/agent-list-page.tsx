@@ -21,11 +21,13 @@ import {
 } from '@/hooks/queries/agent-query'
 import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
 import { createSchedule } from '@/services/schedule-service'
+import { getFirebaseStorage } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import type { AgentRoleDataInterface } from '@/types/agent.type'
 import type { ChatMessageInterface } from '@/types/chat.type'
 import type { ScheduleCreateBodyInterface } from '@/types/schedule.type'
-import { BookmarkPlus } from 'lucide-react'
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
+import { BookmarkPlus, ImagePlusIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownMessage } from '@/components/chat/markdown-message'
 import { TodoMessage } from '@/components/chat/todo-message'
@@ -59,6 +61,11 @@ export const AgentListPage = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
+  const [chatImageDrafts, setChatImageDrafts] = useState<
+    Array<{ id: string; file: File; preview_data_url: string; mime_type: string }>
+  >([])
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([])
+  const [isUploadingChatImages, setIsUploadingChatImages] = useState(false)
   const [editingMemoryId, setEditingMemoryId] = useState<number | null>(null)
   const [editingMemoryContent, setEditingMemoryContent] = useState('')
   const [todoDraftItems, setTodoDraftItems] = useState<TodoDraftItemInterface[]>([])
@@ -69,6 +76,7 @@ export const AgentListPage = () => {
   const sendLockRef = useRef(false)
   const lastSentContentRef = useRef<string | null>(null)
   const keepScrollOffsetRef = useRef<{ top: number; height: number } | null>(null)
+  const chatImageInputRef = useRef<HTMLInputElement | null>(null)
 
   const { data: agents = [], isPending } = useAgentRoleList()
 
@@ -301,15 +309,108 @@ export const AgentListPage = () => {
     })
   }
 
+  const fileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(new Error('파일을 읽는 중 오류가 발생했습니다.'))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const makeRandomId = (): string => {
+    // Safari/환경에 따라 randomUUID 미지원이 있을 수 있어 방어적으로 처리
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID()
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  }
+
+  const handlePickChatImage: React.ChangeEventHandler<HTMLInputElement> = async (event) => {
+    const inputEl = event.currentTarget
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('이미지 파일만 첨부할 수 있습니다.')
+      return
+    }
+
+    const maxSizeBytes = 3 * 1024 * 1024
+    if (file.size > maxSizeBytes) {
+      toast.error('이미지 용량이 너무 큽니다. 3MB 이하로 올려주세요.')
+      return
+    }
+
+    try {
+      const preview_data_url = await fileToDataUrl(file)
+      setChatImageDrafts([
+        {
+          id: `chat-image-${makeRandomId()}`,
+          file,
+          preview_data_url,
+          mime_type: file.type,
+        },
+      ])
+      setUploadedImageUrls([])
+    } catch {
+      toast.error('이미지 미리보기 생성에 실패했습니다.')
+    } finally {
+      // 같은 파일을 다시 선택해도 onChange가 동작하도록 초기화
+      inputEl.value = ''
+    }
+  }
+
+  const uploadChatImagesToFirebase = async (): Promise<string[]> => {
+    if (chatImageDrafts.length === 0) return []
+
+    const storage = getFirebaseStorage()
+    const uploadedUrls: string[] = []
+
+    for (const draft of chatImageDrafts) {
+      const ext = draft.mime_type.split('/')[1] || 'png'
+      const objectPath = `chat_images/${makeRandomId()}.${ext}`
+
+      const fileRef = storageRef(storage, objectPath)
+      await uploadBytes(fileRef, draft.file, { contentType: draft.mime_type })
+      const downloadUrl = await getDownloadURL(fileRef)
+      uploadedUrls.push(downloadUrl)
+    }
+
+    // objectPath는 추후 objectPath 저장/삭제 정책으로 확장 가능
+    return uploadedUrls
+  }
+
   // 채팅 전송 버튼 클릭 핸들러
-  const handleSendChat = () => {
+  const handleSendChat = async () => {
     if (effectiveChatAgentId === null) return
     const content = chatInput.trim()
     if (!content || sendChatMutation.isPending || sendLockRef.current) return
     sendLockRef.current = true
     lastSentContentRef.current = content
     setChatInput('') // 엔터/전송 즉시 입력창 비우기
-    sendChatMutation.mutate({ content, mode: chatMode })
+
+    let imageUrlsToSend: string[] | undefined = undefined
+
+    if (chatImageDrafts.length > 0) {
+      setIsUploadingChatImages(true)
+      try {
+        const urls = await uploadChatImagesToFirebase()
+        imageUrlsToSend = urls
+        setUploadedImageUrls(urls)
+        setChatImageDrafts([])
+      } catch {
+        toast.error('이미지 업로드에 실패했습니다.')
+        setChatInput(content)
+        lastSentContentRef.current = null
+        sendLockRef.current = false
+        return
+      } finally {
+        setIsUploadingChatImages(false)
+      }
+    }
+
+    sendChatMutation.mutate({ content, mode: chatMode, imageUrls: imageUrlsToSend })
   }
 
   // 채팅 입력창 엔터키 누르면 전송 핸들러
@@ -652,6 +753,61 @@ export const AgentListPage = () => {
                   )}
                 </div>
                 <div className="space-y-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={chatImageInputRef}
+                    style={{ display: 'none' }}
+                    onChange={handlePickChatImage}
+                  />
+
+                  <div className="flex items-center justify-end gap-2">
+                    {isUploadingChatImages ? (
+                      <p className="text-[11px] text-muted-foreground">업로드 중...</p>
+                    ) : chatImageDrafts.length > 0 ? (
+                      <p className="text-[11px] text-muted-foreground">미리보기 준비됨</p>
+                    ) : uploadedImageUrls.length > 0 ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        최근 업로드 URL 확보됨 ({uploadedImageUrls.length})
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">1장만 첨부 (미리보기)</p>
+                    )}
+                  </div>
+
+                  {chatImageDrafts.length > 0 ? (
+                    <div className="flex items-start gap-2 rounded-md border bg-card p-2">
+                      <img
+                        src={chatImageDrafts[0]?.preview_data_url}
+                        alt="이미지 미리보기"
+                        className="h-20 w-20 rounded border object-cover"
+                      />
+                      <div className="flex flex-1 flex-col">
+                        <p className="text-xs font-medium line-clamp-2">
+                          {chatImageDrafts[0]?.file.name}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground break-all">
+                          {chatImageDrafts[0]?.mime_type}
+                        </p>
+                        <div className="mt-2">
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            onClick={() => {
+                              setChatImageDrafts([])
+                              setUploadedImageUrls([])
+                              if (chatImageInputRef.current) chatImageInputRef.current.value = ''
+                            }}
+                            disabled={isUploadingChatImages}
+                          >
+                            이미지 제거
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <Textarea
                     value={chatInput}
                     onChange={(event) => setChatInput(event.target.value)}
@@ -672,14 +828,27 @@ export const AgentListPage = () => {
                         <SelectItem value="TODO">Todo</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleSendChat}
-                      disabled={!chatInput.trim() || sendChatMutation.isPending}
-                    >
-                      보내기
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => chatImageInputRef.current?.click()}
+                        disabled={isUploadingChatImages}
+                      >
+                        <ImagePlusIcon size={3} />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleSendChat}
+                        disabled={
+                          !chatInput.trim() || sendChatMutation.isPending || isUploadingChatImages
+                        }
+                      >
+                        보내기
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>

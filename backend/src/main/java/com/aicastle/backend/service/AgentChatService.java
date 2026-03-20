@@ -12,7 +12,10 @@ import com.aicastle.backend.entity.AgentRole;
 import com.aicastle.backend.entity.AgentRoleType;
 import com.aicastle.backend.entity.ChatMessage;
 import com.aicastle.backend.entity.UserAccount;
+import com.aicastle.backend.openai.OpenAiChatDtos.ImageUrlContentPart;
+import com.aicastle.backend.openai.OpenAiChatDtos.ImageUrlObject;
 import com.aicastle.backend.openai.OpenAiChatDtos.Message;
+import com.aicastle.backend.openai.OpenAiChatDtos.TextContentPart;
 import com.aicastle.backend.openai.OpenAiClient;
 import com.aicastle.backend.repository.AgentPinnedMemoryRepository;
 import com.aicastle.backend.repository.AgentRoleRepository;
@@ -25,6 +28,8 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -32,6 +37,8 @@ import org.springframework.stereotype.Service;
 /** 서브 에이전트와의 채팅 스켈레톤 서비스. */
 @Service
 public class AgentChatService {
+
+  private static final Logger log = LoggerFactory.getLogger(AgentChatService.class);
 
   private final AgentRoleRepository agentRoleRepository;
   private final UserAccountRepository userAccountRepository;
@@ -143,6 +150,9 @@ public class AgentChatService {
       throw new IllegalArgumentException("메시지 내용은 비어 있을 수 없습니다.");
     }
 
+    // 프론트에서 전달되는 이미지 URL(들). 비어 있으면 CHAT 입력만 사용한다.
+    List<String> imageUrls = request.imageUrls() == null ? List.of() : request.imageUrls();
+
     UserAccount user =
         userAccountRepository
             .findById(userId)
@@ -204,12 +214,16 @@ public class AgentChatService {
         messages.add(new Message(role, m.getContent()));
       }
 
-      messages.add(new Message("user", content));
+      Object userMessageContent = buildUserMessageContent(content, imageUrls);
+
+      messages.add(new Message("user", userMessageContent));
 
       reply =
           mode == ChatMode.TODO
               ? openAiClient.createTodoJsonWithMessages(messages)
-              : openAiClient.createChatCompletionWithMessages(messages);
+              : (!imageUrls.isEmpty()
+                  ? openAiClient.createVisionResponseWithMessages(messages)
+                  : openAiClient.createChatCompletionWithMessages(messages));
     } catch (Exception e) {
       throw new IllegalStateException("OpenAI 호출에 실패했습니다. " + e.getMessage());
     }
@@ -235,6 +249,29 @@ public class AgentChatService {
     }
 
     return ChatMessageResponse.of(id, role, rawContent, createdAt);
+  }
+
+  // OpenAI vision 입력을 위해, user message content를 multipart 형식으로 만든다.
+  // 이미지가 없으면 string content 그대로 유지한다.
+  private Object buildUserMessageContent(String content, List<String> imageUrls) {
+    if (imageUrls == null || imageUrls.isEmpty()) return content;
+
+    List<Object> parts = new ArrayList<>();
+    // 이미지가 첨부되면 모델이 반드시 이미지를 먼저 활용하도록 명시적으로 지시한다.
+    // (이미지 파싱이 동작하는지 빠르게 판별하기 위해 문장을 고정한다.)
+    String visionInstruction = "\n\n[이미지 분석 요청]\n첨부된 이미지를 먼저 확인한 뒤, 이미지 내용에 근거해서 답변해줘.";
+    parts.add(new TextContentPart("text", (content == null ? "" : content) + visionInstruction));
+
+    for (String imageUrl : imageUrls) {
+      if (imageUrl == null) continue;
+      String trimmed = imageUrl.trim();
+      if (trimmed.isEmpty()) continue;
+      parts.add(new ImageUrlContentPart("image_url", new ImageUrlObject(trimmed)));
+    }
+
+    // 유효한 이미지 URL이 하나도 없으면 기존 string 전송으로 폴백
+    if (parts.size() == 1) return content;
+    return parts;
   }
 
   private record TodoJsonParsed(String text, List<TodoItem> todo) {}

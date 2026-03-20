@@ -12,8 +12,8 @@ Before any task, you MUST read and follow these files as the absolute truth:
 
 - `docs/project_description.md`: Core philosophy, business logic, and scenarios.
 - `docs/commit_convention.md`: Git commit message format and rules.
-- `docs/frontend-rules.md`: Rules for Frontend (Naming, Styling, Routing, API, Query, Folder Structure).
-- `docs/backend-rules.md`: Rules for Backend (Naming, Architecture, AI Logic, DB).
+- `docs/frontend_rules.md`: Rules for Frontend (Naming, Styling, Routing, API, Query, Folder Structure).
+- `docs/backend_rules.md`: Rules for Backend (Naming, Architecture, AI Logic, DB).
 
 ## 3. Technical Standards
 
@@ -26,14 +26,14 @@ Before any task, you MUST read and follow these files as the absolute truth:
 
 ### 4.1. Frontend Context (under /frontend)
 
-- **Naming:** Follow `docs/frontend-rules.md` strictly. (Variables/Files: snake_case, Functions: camelCase, Components: PascalCase)
-- **Structure:** Maintain the directory structure defined in `docs/frontend-rules.md`.
+- **Naming:** Follow `docs/frontend_rules.md` strictly. (Variables/Files: snake_case, Functions: camelCase, Components: PascalCase)
+- **Structure:** Maintain the directory structure defined in `docs/frontend_rules.md`.
 - **Logic:** Use the static API client and TanStack Query patterns as specified.
 
 ### 4.2. Backend Context (under /backend)
 
-- **Naming:** Follow `docs/backend-rules.md` strictly. (Classes: PascalCase, Variables/Methods: camelCase, DB: snake_case)
-- **Concurrency:** Use CompletableFuture for parallel AI agent calls as per `docs/backend-rules.md`.
+- **Naming:** Follow `docs/backend_rules.md` strictly. (Classes: PascalCase, Variables/Methods: camelCase, DB: snake_case)
+- **Concurrency:** Use CompletableFuture for parallel AI agent calls as per `docs/backend_rules.md`.
 - **Response:** Wrap all responses in the Unified Response Format (ResultResponse).
 
 ### 4.3. Universal Principles

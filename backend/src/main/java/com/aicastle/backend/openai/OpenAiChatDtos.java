@@ -28,7 +28,27 @@ public class OpenAiChatDtos {
     }
   }
 
-  public record Message(String role, String content) {}
+  /** OpenAI Chat Completions 메시지. 요청 시 `content`는 string 또는 멀티모달 part 배열일 수 있다. */
+  public record Message(String role, Object content) {}
+
+  // 멀티모달 입력 파트 (VISION)
+  public record TextContentPart(String type, String text) {}
+
+  public record ImageUrlObject(String url) {}
+
+  public record ImageUrlContentPart(String type, ImageUrlObject image_url) {}
+
+  // Responses API (멀티모달 입력용)
+  public record ResponsesCreateRequest(
+      String model, String instructions, List<ResponsesInputMessage> input, Double temperature) {}
+
+  // EasyInputMessage: { role, content, phase?, type? }
+  // curl 예시와 동일하게 type 필드를 생략한다.
+  public record ResponsesInputMessage(String role, List<Object> content) {}
+
+  public record ResponsesInputText(String type, String text) {}
+
+  public record ResponsesInputImage(String type, String image_url, String detail) {}
 
   public record ResponseFormat(String type, JsonSchema json_schema) {
     public static ResponseFormat todoJsonSchemaV1() {

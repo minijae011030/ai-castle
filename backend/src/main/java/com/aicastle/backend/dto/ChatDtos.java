@@ -3,6 +3,7 @@ package com.aicastle.backend.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
+import java.util.List;
 
 /** 메인/에이전트 채팅 공용 DTO. */
 public class ChatDtos {
@@ -52,7 +53,11 @@ public class ChatDtos {
     }
   }
 
-  public record ChatSendRequest(@NotBlank String content, @NotNull ChatMode mode) {}
+  public record ChatSendRequest(
+      @NotBlank String content,
+      @NotNull ChatMode mode,
+      // 이미지 첨부는 선택 사항 (VISION용 URL만 프론트 -> 백엔드로 전달)
+      List<String> imageUrls) {}
 
   /** 커서 기반 채팅 히스토리 페이지 응답. (오래된 -> 최신 순서) */
   public record ChatHistoryPageResponse(

@@ -310,6 +310,7 @@ public class CalendarScheduleService {
     return agentChatService.sendMessage(
         userId,
         occurrence.getAgentId(),
-        new ChatSendRequest(content, com.aicastle.backend.dto.ChatDtos.ChatMode.TODO));
+        new ChatSendRequest(
+            content, com.aicastle.backend.dto.ChatDtos.ChatMode.TODO, java.util.List.of()));
   }
 }
