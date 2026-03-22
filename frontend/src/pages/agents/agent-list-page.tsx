@@ -24,7 +24,7 @@ import { createSchedule } from '@/services/schedule-service'
 import { getFirebaseStorage } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import type { AgentRoleDataInterface } from '@/types/agent.type'
-import type { ChatMessageInterface } from '@/types/chat.type'
+import type { ChatMessageInterface, ImageDraftItemInterface } from '@/types/chat.type'
 import type { ScheduleCreateBodyInterface } from '@/types/schedule.type'
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import { BookmarkPlus, ImagePlusIcon } from 'lucide-react'
@@ -61,9 +61,7 @@ export const AgentListPage = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
-  const [chatImageDrafts, setChatImageDrafts] = useState<
-    Array<{ id: string; file: File; preview_object_url: string; mime_type: string }>
-  >([])
+  const [chatImageDrafts, setChatImageDrafts] = useState<ImageDraftItemInterface[]>([])
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([])
   const [isUploadingChatImages, setIsUploadingChatImages] = useState(false)
   const [editingMemoryId, setEditingMemoryId] = useState<number | null>(null)

@@ -10,7 +10,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
 import { useAgentRoleList, useCreateAgentPinnedMemory } from '@/hooks/queries/agent-query'
-import type { ChatMessageInterface } from '@/types/chat.type'
+import type { ImageDraftItemInterface, ChatMessageInterface } from '@/types/chat.type'
 import { BookmarkPlus } from 'lucide-react'
 import { useRouter } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -40,9 +40,7 @@ export const AgentChatPage = () => {
   const agent = useMemo(() => agents.find((a) => a.id === agentId) ?? null, [agents, agentId])
   const [inputValue, setInputValue] = useState('')
   const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
-  const [chatImageDrafts, setChatImageDrafts] = useState<
-    Array<{ id: string; file: File; preview_object_url: string; mime_type: string }>
-  >([])
+  const [chatImageDrafts, setChatImageDrafts] = useState<ImageDraftItemInterface[]>([])
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([])
   const [isUploadingChatImages, setIsUploadingChatImages] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)

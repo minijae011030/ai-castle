@@ -64,3 +64,10 @@ export interface AgentChatSendResponseInterface {
   message: string
   data: ChatMessageInterface | null
 }
+
+export interface ImageDraftItemInterface {
+  id: string
+  file: File
+  preview_object_url: string
+  mime_type: string
+}
