@@ -51,6 +51,7 @@ interface ScheduleCreateFormValues {
   singleEndDate: string
   singleStartTime: string
   singleEndTime: string
+  singleAllDay: boolean
   todoAgentId: string
 }
 
@@ -81,6 +82,7 @@ export const ScheduleCreateDialog = ({
       singleEndDate: '',
       singleStartTime: '09:00',
       singleEndTime: '10:00',
+      singleAllDay: false,
       todoAgentId: '',
     },
   })
@@ -138,6 +140,10 @@ export const ScheduleCreateDialog = ({
     name: 'singleEndTime',
     control,
   })
+  const { field: singleAllDayField } = useController({
+    name: 'singleAllDay',
+    control,
+  })
   const { field: todoAgentIdField } = useController({
     name: 'todoAgentId',
     control,
@@ -182,8 +188,10 @@ export const ScheduleCreateDialog = ({
 
     // 단일 날짜면 기존 단일 생성 API 사용, 기간이면 range API 사용(한 번의 요청)
     if (start_date_str === end_date_str) {
-      const start_at = `${start_date_str}T${values.singleStartTime}:00`
-      const end_at = `${end_date_str}T${values.singleEndTime}:00`
+      const start_time = values.singleAllDay ? '00:00' : values.singleStartTime
+      const end_time = values.singleAllDay ? '00:00' : values.singleEndTime
+      const start_at = `${start_date_str}T${start_time}:00`
+      const end_at = `${end_date_str}T${end_time}:00`
 
       createScheduleMutation.mutate({
         type,
@@ -202,8 +210,8 @@ export const ScheduleCreateDialog = ({
         description: values.singleDescription.trim() || undefined,
         startDate: start_date_str,
         endDate: end_date_str,
-        startTime: `${values.singleStartTime}:00`,
-        endTime: `${values.singleEndTime}:00`,
+        startTime: `${values.singleAllDay ? '00:00' : values.singleStartTime}:00`,
+        endTime: `${values.singleAllDay ? '00:00' : values.singleEndTime}:00`,
         agentId: agent_id,
       })
     }
@@ -331,13 +339,31 @@ export const ScheduleCreateDialog = ({
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
                 <Label htmlFor="single-start-time-event">시작 시간</Label>
-                <Input id="single-start-time-event" type="time" {...singleStartTimeField} />
+                <Input
+                  id="single-start-time-event"
+                  type="time"
+                  {...singleStartTimeField}
+                  disabled={singleAllDayField.value}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="single-end-time-event">종료 시간</Label>
-                <Input id="single-end-time-event" type="time" {...singleEndTimeField} />
+                <Input
+                  id="single-end-time-event"
+                  type="time"
+                  {...singleEndTimeField}
+                  disabled={singleAllDayField.value}
+                />
               </div>
             </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={Boolean(singleAllDayField.value)}
+                onChange={(event) => singleAllDayField.onChange(event.target.checked)}
+              />
+              종일
+            </label>
           </TabsContent>
           <TabsContent value="todo" className="space-y-3">
             <div className="space-y-1.5">
@@ -392,13 +418,31 @@ export const ScheduleCreateDialog = ({
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
                 <Label htmlFor="single-start-time-todo">시작 시간</Label>
-                <Input id="single-start-time-todo" type="time" {...singleStartTimeField} />
+                <Input
+                  id="single-start-time-todo"
+                  type="time"
+                  {...singleStartTimeField}
+                  disabled={singleAllDayField.value}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="single-end-time-todo">종료 시간</Label>
-                <Input id="single-end-time-todo" type="time" {...singleEndTimeField} />
+                <Input
+                  id="single-end-time-todo"
+                  type="time"
+                  {...singleEndTimeField}
+                  disabled={singleAllDayField.value}
+                />
               </div>
             </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={Boolean(singleAllDayField.value)}
+                onChange={(event) => singleAllDayField.onChange(event.target.checked)}
+              />
+              종일
+            </label>
           </TabsContent>
         </Tabs>
         <DialogFooter>

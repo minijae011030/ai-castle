@@ -142,14 +142,18 @@ public class CalendarScheduleService {
     if (request.startAt() == null || request.endAt() == null) {
       throw new IllegalArgumentException("startAt / endAt 은 필수입니다.");
     }
-    if (!request.endAt().isAfter(request.startAt())) {
-      throw new IllegalArgumentException("endAt 은 startAt 이후여야 합니다.");
+    if (request.endAt().isBefore(request.startAt())) {
+      throw new IllegalArgumentException("endAt 은 startAt 이전일 수 없습니다.");
     }
 
     UserAccount user =
         userAccountRepository
             .findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+    // 시작/종료 시간이 같으면 하루종일 일정으로 간주하여 종료를 +1일 처리한다.
+    LocalDateTime normalizedEndAt =
+        request.endAt().isEqual(request.startAt()) ? request.endAt().plusDays(1) : request.endAt();
 
     ScheduleOccurrence occurrence =
         new ScheduleOccurrence(
@@ -159,7 +163,7 @@ public class CalendarScheduleService {
             request.description() != null ? request.description().trim() : null,
             request.occurrenceDate(),
             request.startAt(),
-            request.endAt());
+            normalizedEndAt);
 
     if (request.type() == ScheduleType.RECURRING_OCCURRENCE) {
       occurrence.setRecurringTemplateId(request.recurringTemplateId());
@@ -193,8 +197,8 @@ public class CalendarScheduleService {
     }
     LocalTime startTime = request.startTime() != null ? request.startTime() : LocalTime.of(9, 0);
     LocalTime endTime = request.endTime() != null ? request.endTime() : LocalTime.of(10, 0);
-    if (!endTime.isAfter(startTime)) {
-      throw new IllegalArgumentException("endTime 은 startTime 이후여야 합니다.");
+    if (endTime.isBefore(startTime)) {
+      throw new IllegalArgumentException("endTime 은 startTime 이전일 수 없습니다.");
     }
 
     UserAccount user =
@@ -205,7 +209,11 @@ public class CalendarScheduleService {
     List<ScheduleOccurrence> entities = new ArrayList<>();
     for (LocalDate d = request.startDate(); !d.isAfter(request.endDate()); d = d.plusDays(1)) {
       LocalDateTime startAt = LocalDateTime.of(d, startTime);
-      LocalDateTime endAt = LocalDateTime.of(d, endTime);
+      // 시작/종료 시간이 같으면 하루종일 일정으로 간주한다.
+      LocalDateTime endAt =
+          endTime.equals(startTime)
+              ? LocalDateTime.of(d.plusDays(1), endTime)
+              : LocalDateTime.of(d, endTime);
 
       ScheduleOccurrence occurrence =
           new ScheduleOccurrence(
@@ -246,8 +254,12 @@ public class CalendarScheduleService {
     }
     LocalDateTime startAt = request.startAt() != null ? request.startAt() : occurrence.getStartAt();
     LocalDateTime endAt = request.endAt() != null ? request.endAt() : occurrence.getEndAt();
-    if (!endAt.isAfter(startAt)) {
-      throw new IllegalArgumentException("endAt 은 startAt 이후여야 합니다.");
+    if (endAt.isBefore(startAt)) {
+      throw new IllegalArgumentException("endAt 은 startAt 이전일 수 없습니다.");
+    }
+    // 시작/종료 시간이 같으면 하루종일 일정으로 간주하여 종료를 +1일 처리한다.
+    if (endAt.isEqual(startAt)) {
+      endAt = endAt.plusDays(1);
     }
     occurrence.setStartAt(startAt);
     occurrence.setEndAt(endAt);
