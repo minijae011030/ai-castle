@@ -7,17 +7,22 @@ import com.aicastle.backend.entity.AgentRoleType;
 public class AgentRoleDtos {
 
   public record AgentRoleResponse(
-      Long id, String name, AgentRoleType roleType, String systemPrompt) {
+      Long id, String name, AgentRoleType roleType, String systemPrompt, Long mainAgentId) {
 
     public static AgentRoleResponse fromEntity(AgentRole entity) {
       return new AgentRoleResponse(
-          entity.getId(), entity.getName(), entity.getRoleType(), entity.getSystemPrompt());
+          entity.getId(),
+          entity.getName(),
+          entity.getRoleType(),
+          entity.getSystemPrompt(),
+          entity.getMainAgent() == null ? null : entity.getMainAgent().getId());
     }
   }
 
-  public record AgentRoleCreateRequest(String name, AgentRoleType roleType, String systemPrompt) {}
+  public record AgentRoleCreateRequest(
+      String name, AgentRoleType roleType, String systemPrompt, Long mainAgentId) {}
 
-  public record AgentRoleUpdateRequest(String systemPrompt) {}
+  public record AgentRoleUpdateRequest(String systemPrompt, Long mainAgentId) {}
 
   /** UI 선택용 간단 목록 DTO (id + name). */
   public record ActiveAgentResponse(Long id, String name) {

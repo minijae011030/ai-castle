@@ -21,11 +21,16 @@ public class AgentRole extends BaseTimeEntity {
   @Column(name = "system_prompt", nullable = false, columnDefinition = "TEXT")
   private String systemPrompt;
 
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "main_agent_id")
+  private AgentRole mainAgent;
+
   protected AgentRole() {}
 
-  public AgentRole(String name, AgentRoleType roleType, String systemPrompt) {
+  public AgentRole(String name, AgentRoleType roleType, String systemPrompt, AgentRole mainAgent) {
     this.name = name;
     this.roleType = roleType;
     this.systemPrompt = systemPrompt;
+    this.mainAgent = mainAgent;
   }
 }
