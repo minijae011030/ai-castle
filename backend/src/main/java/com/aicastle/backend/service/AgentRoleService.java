@@ -56,8 +56,9 @@ public class AgentRoleService {
               throw new IllegalArgumentException("이미 존재하는 에이전트 이름입니다.");
             });
 
+    AgentRole mainAgent = resolveMainAgentForCreate(request.roleType(), request.mainAgentId());
     AgentRole entity =
-        new AgentRole(request.name(), request.roleType(), request.systemPrompt().trim());
+        new AgentRole(request.name(), request.roleType(), request.systemPrompt().trim(), mainAgent);
     AgentRole saved = agentRoleRepository.save(entity);
     return AgentRoleResponse.fromEntity(saved);
   }
@@ -72,8 +73,60 @@ public class AgentRoleService {
     if (request.systemPrompt() != null && !request.systemPrompt().isBlank()) {
       entity.setSystemPrompt(request.systemPrompt().trim());
     }
+    // SUB는 메인 에이전트 1개가 필수, MAIN은 메인 에이전트 지정 불가
+    AgentRole mainAgent = resolveMainAgentForUpdate(entity, request.mainAgentId());
+    entity.setMainAgent(mainAgent);
 
     AgentRole saved = agentRoleRepository.save(entity);
     return AgentRoleResponse.fromEntity(saved);
+  }
+
+  private AgentRole resolveMainAgentForCreate(AgentRoleType roleType, Long mainAgentId) {
+    if (roleType == AgentRoleType.MAIN) {
+      if (mainAgentId != null) {
+        throw new IllegalArgumentException("메인 에이전트는 mainAgentId를 지정할 수 없습니다.");
+      }
+      return null;
+    }
+    if (mainAgentId == null) {
+      throw new IllegalArgumentException("서브 에이전트는 mainAgentId가 필수입니다.");
+    }
+    AgentRole mainAgent =
+        agentRoleRepository
+            .findById(mainAgentId)
+            .orElseThrow(() -> new IllegalArgumentException("지정한 메인 에이전트를 찾을 수 없습니다."));
+    if (mainAgent.getRoleType() != AgentRoleType.MAIN) {
+      throw new IllegalArgumentException("서브 에이전트는 MAIN 타입 에이전트에만 연결할 수 있습니다.");
+    }
+    return mainAgent;
+  }
+
+  private AgentRole resolveMainAgentForUpdate(AgentRole entity, Long requestedMainAgentId) {
+    if (entity.getRoleType() == AgentRoleType.MAIN) {
+      if (requestedMainAgentId != null) {
+        throw new IllegalArgumentException("메인 에이전트는 mainAgentId를 지정할 수 없습니다.");
+      }
+      return null;
+    }
+
+    Long nextMainAgentId =
+        requestedMainAgentId != null
+            ? requestedMainAgentId
+            : (entity.getMainAgent() == null ? null : entity.getMainAgent().getId());
+    if (nextMainAgentId == null) {
+      throw new IllegalArgumentException("서브 에이전트는 mainAgentId가 필수입니다.");
+    }
+    if (entity.getId() != null && entity.getId().equals(nextMainAgentId)) {
+      throw new IllegalArgumentException("자기 자신을 메인 에이전트로 지정할 수 없습니다.");
+    }
+
+    AgentRole mainAgent =
+        agentRoleRepository
+            .findById(nextMainAgentId)
+            .orElseThrow(() -> new IllegalArgumentException("지정한 메인 에이전트를 찾을 수 없습니다."));
+    if (mainAgent.getRoleType() != AgentRoleType.MAIN) {
+      throw new IllegalArgumentException("서브 에이전트는 MAIN 타입 에이전트에만 연결할 수 있습니다.");
+    }
+    return mainAgent;
   }
 }

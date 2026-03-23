@@ -3,6 +3,7 @@ export interface AgentRoleDataInterface {
   name: string
   roleType: 'MAIN' | 'SUB'
   systemPrompt: string
+  mainAgentId: number | null
 }
 
 export interface AgentRoleListResponseInterface {
@@ -15,6 +16,7 @@ export interface AgentRoleCreateBodyInterface {
   name: string
   roleType: 'MAIN' | 'SUB'
   systemPrompt: string
+  mainAgentId?: number | null
 }
 
 export interface AgentRoleCreateResponseInterface {
@@ -25,6 +27,7 @@ export interface AgentRoleCreateResponseInterface {
 
 export interface AgentRoleUpdateBodyInterface {
   systemPrompt: string
+  mainAgentId?: number | null
 }
 
 export interface AgentRoleUpdateResponseInterface {
@@ -43,3 +46,20 @@ export interface ActiveAgentListResponseInterface {
   message: string
   data: ActiveAgentDataInterface[] | null
 }
+
+export interface TodoDraftItemInterface {
+  draftId: string
+  sourceScheduleId: number | null
+  selected: boolean
+  title: string
+  description: string
+  estimateMinutes: number | null
+  priority: 'LOW' | 'MEDIUM' | 'HIGH'
+  status: 'TODO' | 'DONE'
+  scheduledDate: string
+  startAt: string
+  endAt: string
+}
+
+export type TodoWorkbenchDateFilterType = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH'
+export type TodoDraftPanelType = 'REGISTER' | 'ADJUST'
