@@ -7,6 +7,7 @@ export interface TodoItemInterface {
   title: string
   description: string | null
   estimateMinutes: number | null
+  sourceScheduleId: number | null
   priority: TodoPriority
   status: TodoStatus
   scheduledDate: string
@@ -17,6 +18,7 @@ export interface TodoItemInterface {
 export interface ChatMessageInterface {
   id: string
   role: ChatMessageRole
+  mode: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
   content: string
   createdAt: string
   todo?: TodoItemInterface[] | null
@@ -31,8 +33,10 @@ export interface MainChatHistoryResponseInterface {
 
 export interface MainChatSendBodyInterface {
   content: string
-  mode: 'CHAT' | 'TODO'
+  mode: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
   imageUrls?: string[]
+  negotiationTodos?: NegotiationTodoRequestItemInterface[]
+  preferredDeadlineDate?: string
 }
 
 export interface MainChatSendResponseInterface {
@@ -55,8 +59,10 @@ export interface AgentChatHistoryPageDataInterface {
 
 export interface AgentChatSendBodyInterface {
   content: string
-  mode: 'CHAT' | 'TODO'
+  mode: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
   imageUrls?: string[]
+  negotiationTodos?: NegotiationTodoRequestItemInterface[]
+  preferredDeadlineDate?: string
 }
 
 export interface AgentChatSendResponseInterface {
@@ -70,4 +76,12 @@ export interface ImageDraftItemInterface {
   file: File
   preview_object_url: string
   mime_type: string
+}
+
+export interface NegotiationTodoRequestItemInterface {
+  scheduleId: number
+  title: string
+  occurrenceDate: string
+  startAt: string
+  endAt: string
 }

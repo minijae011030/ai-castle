@@ -1,5 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { TodoAdjustPanel } from '@/components/agents/todo-adjust-panel'
+import { TodoRegisterPanel } from '@/components/agents/todo-register-panel'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -20,11 +22,17 @@ import {
   useUpdateAgentRole,
 } from '@/hooks/queries/agent-query'
 import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
-import { createSchedule } from '@/services/schedule-service'
+import { useSchedulesByMonth } from '@/hooks/queries/schedule-query'
+import { createSchedule, deleteSchedule } from '@/services/schedule-service'
 import { getFirebaseStorage } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import type { AgentRoleDataInterface } from '@/types/agent.type'
-import type { ChatMessageInterface, ImageDraftItemInterface } from '@/types/chat.type'
+import type {
+  ChatMessageInterface,
+  ImageDraftItemInterface,
+  NegotiationTodoRequestItemInterface,
+} from '@/types/chat.type'
+import type { ScheduleOccurrenceInterface } from '@/types/schedule.type'
 import type { ScheduleCreateBodyInterface } from '@/types/schedule.type'
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import { BookmarkPlus, ImagePlusIcon } from 'lucide-react'
@@ -42,6 +50,7 @@ const emptyForm = {
 
 interface TodoDraftItemInterface {
   draftId: string
+  sourceScheduleId: number | null
   selected: boolean
   title: string
   description: string
@@ -52,6 +61,9 @@ interface TodoDraftItemInterface {
   startAt: string
   endAt: string
 }
+
+type TodoWorkbenchDateFilterType = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH'
+type TodoDraftPanelType = 'REGISTER' | 'ADJUST'
 
 export const AgentListPage = () => {
   const queryClient = useQueryClient()
@@ -68,7 +80,17 @@ export const AgentListPage = () => {
   const [editingMemoryContent, setEditingMemoryContent] = useState('')
   const [todoDraftItems, setTodoDraftItems] = useState<TodoDraftItemInterface[]>([])
   const [todoDraftSourceMessageId, setTodoDraftSourceMessageId] = useState<string | null>(null)
+  const [todoDraftPanelType, setTodoDraftPanelType] = useState<TodoDraftPanelType>('REGISTER')
   const [isTodoRegistering, setIsTodoRegistering] = useState(false)
+  const [negotiationSourceTodoIdsByMessageId, setNegotiationSourceTodoIdsByMessageId] = useState<
+    Record<string, number[]>
+  >({})
+  const [todoWorkbenchFilter, setTodoWorkbenchFilter] =
+    useState<TodoWorkbenchDateFilterType>('THIS_WEEK')
+  const [selectedWorkbenchTodoIds, setSelectedWorkbenchTodoIds] = useState<number[]>([])
+  const [adjustRequestMessage, setAdjustRequestMessage] =
+    useState('선택한 일정이 빡빡해서 조정이 필요해요.')
+  const [adjustRequestDeadlineDate, setAdjustRequestDeadlineDate] = useState('')
 
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const sendLockRef = useRef(false)
@@ -77,6 +99,13 @@ export const AgentListPage = () => {
   const chatImageInputRef = useRef<HTMLInputElement | null>(null)
 
   const { data: agents = [], isPending } = useAgentRoleList()
+  const todayBaseDate = useMemo(() => new Date(), [])
+  const currentYear = todayBaseDate.getFullYear()
+  const currentMonth = todayBaseDate.getMonth() + 1
+  const { data: monthlySchedules = [], isPending: isMonthlySchedulesPending } = useSchedulesByMonth(
+    currentYear,
+    currentMonth,
+  )
 
   // 초기 진입 시에는 state를 effect로 세팅하지 않고, 파생값으로 "첫 에이전트 채팅"을 기본으로 보여준다.
   const effectiveChatAgentId = chatAgentId ?? agents[0]?.id ?? null
@@ -108,8 +137,18 @@ export const AgentListPage = () => {
       }
       lastSentContentRef.current = null
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       lastSentContentRef.current = null
+      if (variables.mode !== 'TODO_NEGOTIATION') return
+      const sourceTodoIds =
+        variables.negotiationTodos
+          ?.map((todo) => todo.scheduleId)
+          .filter((id) => typeof id === 'number') ?? []
+      if (!data?.id || sourceTodoIds.length === 0) return
+      setNegotiationSourceTodoIdsByMessageId((previous) => ({
+        ...previous,
+        [data.id]: sourceTodoIds,
+      }))
     },
   })
 
@@ -141,6 +180,65 @@ export const AgentListPage = () => {
     return [...systemItems, ...olderChrono, ...newestNonSystem]
   }, [chatPages])
 
+  const workbenchTodos = useMemo(() => {
+    if (effectiveChatAgentId === null) return []
+
+    const dayStart = new Date(todayBaseDate)
+    dayStart.setHours(0, 0, 0, 0)
+    const dayEnd = new Date(todayBaseDate)
+    dayEnd.setHours(23, 59, 59, 999)
+
+    const weekStart = new Date(dayStart)
+    const day = weekStart.getDay()
+    const diffToMonday = day === 0 ? 6 : day - 1
+    weekStart.setDate(weekStart.getDate() - diffToMonday)
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+    weekEnd.setHours(23, 59, 59, 999)
+
+    const toSafeDate = (value: string) => {
+      const date = new Date(value)
+      return Number.isNaN(date.getTime()) ? null : date
+    }
+
+    const isInRange = (targetDate: Date) => {
+      if (todoWorkbenchFilter === 'TODAY') {
+        return targetDate >= dayStart && targetDate <= dayEnd
+      }
+      if (todoWorkbenchFilter === 'THIS_WEEK') {
+        return targetDate >= weekStart && targetDate <= weekEnd
+      }
+      return true
+    }
+
+    return monthlySchedules
+      .filter((schedule) => {
+        if (schedule.type !== 'TODO') return false
+        if (schedule.agentId !== effectiveChatAgentId) return false
+        const parsed = toSafeDate(schedule.startAt)
+        if (!parsed) return false
+        return isInRange(parsed)
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a.startAt).getTime()
+        const bTime = new Date(b.startAt).getTime()
+        return aTime - bTime
+      })
+  }, [effectiveChatAgentId, monthlySchedules, todayBaseDate, todoWorkbenchFilter])
+
+  useEffect(() => {
+    setSelectedWorkbenchTodoIds((previous) => {
+      const next = previous.filter((todoId) => workbenchTodos.some((todo) => todo.id === todoId))
+      if (
+        next.length === previous.length &&
+        next.every((todoId, index) => todoId === previous[index])
+      ) {
+        return previous
+      }
+      return next
+    })
+  }, [workbenchTodos])
+
   const buildEmptyDraftItem = (): TodoDraftItemInterface => {
     const now = new Date()
     const yyyy = now.getFullYear()
@@ -149,6 +247,7 @@ export const AgentListPage = () => {
     const baseDate = `${yyyy}-${mm}-${dd}`
     return {
       draftId: `draft-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      sourceScheduleId: null,
       selected: true,
       title: '',
       description: '',
@@ -164,10 +263,17 @@ export const AgentListPage = () => {
   const openTodoDraftPanel = (message: ChatMessageInterface) => {
     const sourceItems = message.todo ?? []
     if (sourceItems.length === 0) return
+    const sourceIdsForReplace = negotiationSourceTodoIdsByMessageId[message.id] ?? []
+    const panelType: TodoDraftPanelType =
+      message.mode === 'TODO_NEGOTIATION' ? 'ADJUST' : 'REGISTER'
     setTodoDraftSourceMessageId(message.id)
+    setTodoDraftPanelType(panelType)
     setTodoDraftItems(
       sourceItems.map((item, index) => ({
         draftId: `${message.id}-${index}`,
+        sourceScheduleId:
+          item.sourceScheduleId ??
+          (panelType === 'ADJUST' ? (sourceIdsForReplace[index] ?? null) : null),
         selected: true,
         title: item.title,
         description: item.description ?? '',
@@ -190,6 +296,101 @@ export const AgentListPage = () => {
     )
   }
 
+  const convertScheduleToDraftItem = (
+    schedule: ScheduleOccurrenceInterface,
+  ): TodoDraftItemInterface => {
+    const occurrenceDate = schedule.occurrenceDate
+    const fallbackStartAt = `${occurrenceDate}T20:00:00`
+    const fallbackEndAt = `${occurrenceDate}T20:30:00`
+    return {
+      draftId: `workbench-${schedule.id}`,
+      sourceScheduleId: schedule.id,
+      selected: true,
+      title: schedule.title,
+      description: schedule.description ?? '',
+      estimateMinutes: null,
+      priority: 'MEDIUM',
+      status: schedule.done ? 'DONE' : 'TODO',
+      scheduledDate: occurrenceDate,
+      startAt: schedule.startAt || fallbackStartAt,
+      endAt: schedule.endAt || fallbackEndAt,
+    }
+  }
+
+  const handleToggleWorkbenchTodoSelection = (todoId: number, checked: boolean) => {
+    setSelectedWorkbenchTodoIds((previous) => {
+      if (checked) {
+        if (previous.includes(todoId)) return previous
+        return [...previous, todoId]
+      }
+      return previous.filter((id) => id !== todoId)
+    })
+  }
+
+  const handleSelectAllWorkbenchTodos = () => {
+    setSelectedWorkbenchTodoIds(workbenchTodos.map((todo) => todo.id))
+  }
+
+  const handleClearWorkbenchSelection = () => {
+    setSelectedWorkbenchTodoIds([])
+  }
+
+  const handleOpenWorkbenchSelectionInEditor = () => {
+    const selectedTodos = workbenchTodos.filter((todo) =>
+      selectedWorkbenchTodoIds.includes(todo.id),
+    )
+    if (selectedTodos.length === 0) {
+      toast.error('워크벤치에서 TODO를 먼저 선택하세요.')
+      return
+    }
+    setTodoDraftSourceMessageId('workbench')
+    setTodoDraftPanelType('ADJUST')
+    setTodoDraftItems(selectedTodos.map(convertScheduleToDraftItem))
+  }
+
+  const handleRequestTodoNegotiation = () => {
+    if (selectedWorkbenchTodoIds.length === 0) {
+      toast.error('조정할 TODO를 먼저 선택하세요.')
+      return
+    }
+    if (effectiveChatAgentId === null || sendChatMutation.isPending || sendLockRef.current) {
+      return
+    }
+
+    const selectedTodos = workbenchTodos.filter((todo) =>
+      selectedWorkbenchTodoIds.includes(todo.id),
+    )
+    if (selectedTodos.length === 0) {
+      toast.error('선택된 TODO를 찾지 못했습니다. 다시 선택해주세요.')
+      return
+    }
+
+    const trimmedRequestMessage = adjustRequestMessage.trim()
+    if (!trimmedRequestMessage) {
+      toast.error('조정 요청 문구를 입력해주세요.')
+      return
+    }
+
+    const negotiationTodos: NegotiationTodoRequestItemInterface[] = selectedTodos.map((todo) => ({
+      scheduleId: todo.id,
+      title: todo.title,
+      occurrenceDate: todo.occurrenceDate,
+      startAt: todo.startAt,
+      endAt: todo.endAt,
+    }))
+
+    const requestContent = trimmedRequestMessage
+
+    sendLockRef.current = true
+    sendChatMutation.mutate({
+      content: requestContent,
+      mode: 'TODO_NEGOTIATION',
+      negotiationTodos,
+      preferredDeadlineDate: adjustRequestDeadlineDate || undefined,
+    })
+    toast.success(`조정 요청을 보냈어요. (${selectedTodos.length}개)`)
+  }
+
   const registerTodoDraftItems = async () => {
     if (effectiveChatAgentId === null || isTodoRegistering) return
     const selectedItems = todoDraftItems.filter((item) => item.selected)
@@ -210,26 +411,73 @@ export const AgentListPage = () => {
 
     setIsTodoRegistering(true)
     try {
-      const requests: ScheduleCreateBodyInterface[] = validItems.map((item) => ({
-        type: 'TODO',
-        title: item.title.trim(),
-        description: item.description.trim() || undefined,
-        occurrenceDate: item.scheduledDate,
-        startAt: item.startAt,
-        endAt: item.endAt,
-        agentId: effectiveChatAgentId,
+      const requestItems = validItems.map((item) => ({
+        draftId: item.draftId,
+        sourceScheduleId: item.sourceScheduleId,
+        body: {
+          type: 'TODO' as const,
+          title: item.title.trim(),
+          description: item.description.trim() || undefined,
+          occurrenceDate: item.scheduledDate,
+          startAt: item.startAt,
+          endAt: item.endAt,
+          agentId: effectiveChatAgentId,
+        },
       }))
 
-      const results = await Promise.allSettled(requests.map((body) => createSchedule(body)))
-      const successCount = results.filter((result) => result.status === 'fulfilled').length
-      const failCount = results.length - successCount
+      const createTargets = requestItems
 
-      if (successCount > 0) {
+      const createResults = await Promise.allSettled(
+        createTargets.map((item) => createSchedule(item.body as ScheduleCreateBodyInterface)),
+      )
+      const successIndexes = createResults
+        .map((result, index) => (result.status === 'fulfilled' ? index : -1))
+        .filter((index) => index >= 0)
+      const successCount = successIndexes.length
+      const failCount = createResults.length - successCount
+
+      const sourceIdsUsedForDelete = new Set<number>()
+      let removedOriginalCount = 0
+      if (successIndexes.length > 0) {
+        const sourceIdsToDelete = successIndexes
+          .map((index) => createTargets[index]?.sourceScheduleId)
+          .filter((id): id is number => typeof id === 'number' && id > 0)
+
+        if (sourceIdsToDelete.length > 0) {
+          sourceIdsToDelete.forEach((id) => sourceIdsUsedForDelete.add(id))
+          const deleteResults = await Promise.allSettled(
+            sourceIdsToDelete.map((id) => deleteSchedule(id)),
+          )
+          removedOriginalCount = deleteResults.filter(
+            (result) => result.status === 'fulfilled',
+          ).length
+        }
+      }
+
+      if (successCount > 0 || removedOriginalCount > 0) {
         await queryClient.invalidateQueries({ queryKey: ['schedule'] })
       }
 
       if (failCount === 0) {
-        toast.success(`${successCount}개의 투두를 캘린더에 등록했습니다.`)
+        if (removedOriginalCount > 0) {
+          toast.success(
+            `${successCount}개의 조정 TODO를 등록하고 기존 TODO ${removedOriginalCount}개를 삭제했습니다.`,
+          )
+        } else {
+          toast.success(`${successCount}개의 투두를 캘린더에 등록했습니다.`)
+        }
+        if (sourceIdsUsedForDelete.size > 0) {
+          setNegotiationSourceTodoIdsByMessageId((previous) => {
+            const nextMap: Record<string, number[]> = {}
+            for (const [messageId, sourceIds] of Object.entries(previous)) {
+              const remainingIds = sourceIds.filter((id) => !sourceIdsUsedForDelete.has(id))
+              if (remainingIds.length > 0) {
+                nextMap[messageId] = remainingIds
+              }
+            }
+            return nextMap
+          })
+        }
         setTodoDraftItems((previous) => previous.filter((item) => !item.selected))
       } else if (successCount > 0) {
         toast.error(`${successCount}개 성공, ${failCount}개 실패했습니다.`)
@@ -888,148 +1136,179 @@ export const AgentListPage = () => {
               </CardContent>
             </Card>
 
-            {todoDraftItems.length > 0 ? (
-              <Card className="w-md shrink-0">
+            <div className="w-md shrink-0 space-y-3">
+              <Card>
                 <CardHeader className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold">투두 편집 패널</h3>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      onClick={() => {
-                        setTodoDraftItems([])
-                        setTodoDraftSourceMessageId(null)
-                      }}
+                    <h3 className="text-sm font-semibold">TODO 워크벤치</h3>
+                    <Select
+                      value={todoWorkbenchFilter}
+                      onValueChange={(value) =>
+                        setTodoWorkbenchFilter(value as TodoWorkbenchDateFilterType)
+                      }
                     >
-                      닫기
-                    </Button>
+                      <SelectTrigger size="sm" className="w-32">
+                        <SelectValue placeholder="기간" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="TODAY">오늘</SelectItem>
+                        <SelectItem value="THIS_WEEK">이번 주</SelectItem>
+                        <SelectItem value="THIS_MONTH">이번 달</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    메시지 #{todoDraftSourceMessageId}에서 가져온 투두입니다. 수정/부분 삭제 후
-                    등록하세요.
+                    에이전트와 연결된 TODO를 날짜와 무관하게 선택해 조정 요청할 수 있습니다.
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  <div className="max-h-[min(1000px,calc(100dvh-270px))] space-y-2 overflow-auto pr-1">
-                    {todoDraftItems.map((item) => (
-                      <div key={item.draftId} className="space-y-2 rounded-md border p-2">
-                        <div className="flex items-center justify-between">
-                          <label className="flex items-center gap-2 text-xs">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>
+                      {selectedWorkbenchTodoIds.length}개 선택 / 총 {workbenchTodos.length}개
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={handleSelectAllWorkbenchTodos}
+                      >
+                        전체 선택
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={handleClearWorkbenchSelection}
+                      >
+                        선택 해제
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="max-h-[min(1000px,calc(100dvh-480px))] space-y-2 overflow-auto pr-1">
+                    {isMonthlySchedulesPending ? (
+                      <p className="text-xs text-muted-foreground">TODO를 불러오는 중입니다...</p>
+                    ) : workbenchTodos.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">조건에 맞는 TODO가 없습니다.</p>
+                    ) : (
+                      workbenchTodos.map((todo) => {
+                        const checked = selectedWorkbenchTodoIds.includes(todo.id)
+                        return (
+                          <label
+                            key={todo.id}
+                            className={cn(
+                              'flex cursor-pointer items-start gap-2 rounded border p-2',
+                              checked ? 'border-primary bg-primary/5' : 'border-border',
+                            )}
+                          >
                             <input
                               type="checkbox"
-                              checked={item.selected}
-                              onChange={(event) => {
-                                updateTodoDraftItem(item.draftId, (previous) => ({
-                                  ...previous,
-                                  selected: event.target.checked,
-                                }))
-                              }}
+                              checked={checked}
+                              onChange={(event) =>
+                                handleToggleWorkbenchTodoSelection(todo.id, event.target.checked)
+                              }
+                              className="mt-0.5"
                             />
-                            등록 대상
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium wrap-break-word">{todo.title}</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {todo.occurrenceDate} {todo.startAt.slice(11, 16)}-
+                                {todo.endAt.slice(11, 16)}
+                              </p>
+                            </div>
                           </label>
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            onClick={() => {
-                              setTodoDraftItems((previous) =>
-                                previous.filter((draftItem) => draftItem.draftId !== item.draftId),
-                              )
-                            }}
-                          >
-                            삭제
-                          </Button>
-                        </div>
-
-                        <Input
-                          value={item.title}
-                          onChange={(event) =>
-                            updateTodoDraftItem(item.draftId, (previous) => ({
-                              ...previous,
-                              title: event.target.value,
-                            }))
-                          }
-                          placeholder="제목"
-                        />
-                        <Textarea
-                          rows={2}
-                          value={item.description}
-                          onChange={(event) =>
-                            updateTodoDraftItem(item.draftId, (previous) => ({
-                              ...previous,
-                              description: event.target.value,
-                            }))
-                          }
-                          placeholder="설명"
-                        />
-                        <div className="grid grid-cols-1 gap-2">
-                          <Input
-                            type="date"
-                            value={item.scheduledDate}
-                            onChange={(event) =>
-                              updateTodoDraftItem(item.draftId, (previous) => {
-                                const nextDate = event.target.value
-                                const nextStartTime = previous.startAt.slice(11, 19) || '20:00:00'
-                                const nextEndTime = previous.endAt.slice(11, 19) || '21:00:00'
-                                return {
-                                  ...previous,
-                                  scheduledDate: nextDate,
-                                  startAt: `${nextDate}T${nextStartTime}`,
-                                  endAt: `${nextDate}T${nextEndTime}`,
-                                }
-                              })
-                            }
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            type="time"
-                            value={item.startAt.slice(11, 16)}
-                            onChange={(event) =>
-                              updateTodoDraftItem(item.draftId, (previous) => ({
-                                ...previous,
-                                startAt: `${previous.scheduledDate}T${event.target.value}:00`,
-                              }))
-                            }
-                          />
-                          <Input
-                            type="time"
-                            value={item.endAt.slice(11, 16)}
-                            onChange={(event) =>
-                              updateTodoDraftItem(item.draftId, (previous) => ({
-                                ...previous,
-                                endAt: `${previous.scheduledDate}T${event.target.value}:00`,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                    ))}
+                        )
+                      })
+                    )}
                   </div>
+
+                  <div className="space-y-2 rounded-md border p-2">
+                    <p className="text-xs font-medium">조정 요청 채팅 만들기</p>
+                    <Textarea
+                      rows={2}
+                      value={adjustRequestMessage}
+                      onChange={(event) => setAdjustRequestMessage(event.target.value)}
+                      placeholder="예: 선택한 일정이 너무 빡빡해요. 다음주 수요일까지 끝낼 수 있게 조정해주세요."
+                    />
+                    <div className="space-y-1">
+                      <p className="text-[11px] text-muted-foreground">희망 완료 기한 (선택)</p>
+                      <Input
+                        type="date"
+                        value={adjustRequestDeadlineDate}
+                        onChange={(event) => setAdjustRequestDeadlineDate(event.target.value)}
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between gap-2">
                     <Button
                       type="button"
                       size="xs"
                       variant="outline"
-                      onClick={() =>
-                        setTodoDraftItems((previous) => [...previous, buildEmptyDraftItem()])
-                      }
+                      onClick={handleOpenWorkbenchSelectionInEditor}
+                      disabled={selectedWorkbenchTodoIds.length === 0}
                     >
-                      + 항목 추가
+                      선택 항목 편집 패널로 열기
                     </Button>
                     <Button
                       type="button"
                       size="sm"
-                      onClick={registerTodoDraftItems}
-                      disabled={isTodoRegistering}
+                      onClick={handleRequestTodoNegotiation}
+                      disabled={selectedWorkbenchTodoIds.length === 0 || sendChatMutation.isPending}
                     >
-                      선택 항목 캘린더 등록
+                      조정 요청 채팅 보내기
                     </Button>
                   </div>
                 </CardContent>
               </Card>
-            ) : null}
+
+              {todoDraftItems.length > 0 ? (
+                todoDraftPanelType === 'ADJUST' ? (
+                  <TodoAdjustPanel
+                    sourceMessageId={todoDraftSourceMessageId}
+                    draftItems={todoDraftItems}
+                    isTodoRegistering={isTodoRegistering}
+                    onClose={() => {
+                      setTodoDraftItems([])
+                      setTodoDraftSourceMessageId(null)
+                      setTodoDraftPanelType('REGISTER')
+                    }}
+                    onUpdateDraftItem={updateTodoDraftItem}
+                    onRemoveDraftItem={(draftId) => {
+                      setTodoDraftItems((previous) =>
+                        previous.filter((draftItem) => draftItem.draftId !== draftId),
+                      )
+                    }}
+                    onAddDraftItem={() =>
+                      setTodoDraftItems((previous) => [...previous, buildEmptyDraftItem()])
+                    }
+                    onApplyAdjustments={registerTodoDraftItems}
+                  />
+                ) : (
+                  <TodoRegisterPanel
+                    sourceMessageId={todoDraftSourceMessageId}
+                    draftItems={todoDraftItems}
+                    isTodoRegistering={isTodoRegistering}
+                    onClose={() => {
+                      setTodoDraftItems([])
+                      setTodoDraftSourceMessageId(null)
+                      setTodoDraftPanelType('REGISTER')
+                    }}
+                    onUpdateDraftItem={updateTodoDraftItem}
+                    onRemoveDraftItem={(draftId) => {
+                      setTodoDraftItems((previous) =>
+                        previous.filter((draftItem) => draftItem.draftId !== draftId),
+                      )
+                    }}
+                    onAddDraftItem={() =>
+                      setTodoDraftItems((previous) => [...previous, buildEmptyDraftItem()])
+                    }
+                    onRegister={registerTodoDraftItems}
+                  />
+                )
+              ) : null}
+            </div>
           </div>
         )}
       </div>

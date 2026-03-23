@@ -276,8 +276,9 @@ export const ScheduleCreateDialog = ({
                         )
                       }}
                       className={cn(
-                        'rounded-full border px-2 py-0.5 ' + checked
-                          ? 'bg-primary text-primary-foreground border-primary'
+                        'rounded-full border px-2 py-0.5',
+                        checked
+                          ? 'bg-primary border-primary text-primary-foreground'
                           : 'bg-background text-foreground/80',
                       )}
                     >

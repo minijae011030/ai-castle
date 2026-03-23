@@ -311,6 +311,10 @@ public class CalendarScheduleService {
         userId,
         occurrence.getAgentId(),
         new ChatSendRequest(
-            content, com.aicastle.backend.dto.ChatDtos.ChatMode.TODO, java.util.List.of()));
+            content,
+            com.aicastle.backend.dto.ChatDtos.ChatMode.TODO,
+            java.util.List.of(),
+            java.util.List.of(),
+            null));
   }
 }

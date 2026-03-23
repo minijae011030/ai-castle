@@ -24,6 +24,12 @@ public class ChatMessage extends BaseTimeEntity {
     SYSTEM
   }
 
+  public enum Mode {
+    CHAT,
+    TODO,
+    TODO_NEGOTIATION
+  }
+
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "user_account_id", nullable = false)
   private UserAccount userAccount;
@@ -42,6 +48,10 @@ public class ChatMessage extends BaseTimeEntity {
   @Column(name = "image_urls_json", columnDefinition = "TEXT")
   private String imageUrlsJson;
 
+  @Enumerated(EnumType.STRING)
+  @Column(name = "chat_mode", length = 32)
+  private Mode chatMode;
+
   protected ChatMessage() {}
 
   public ChatMessage(UserAccount userAccount, AgentRole agentRole, Role role, String content) {
@@ -49,6 +59,7 @@ public class ChatMessage extends BaseTimeEntity {
     this.agentRole = agentRole;
     this.role = role;
     this.content = content;
+    this.chatMode = Mode.CHAT;
   }
 
   public ChatMessage(
@@ -60,6 +71,22 @@ public class ChatMessage extends BaseTimeEntity {
     this.userAccount = userAccount;
     this.agentRole = agentRole;
     this.role = role;
+    this.content = content;
+    this.imageUrlsJson = imageUrlsJson;
+    this.chatMode = Mode.CHAT;
+  }
+
+  public ChatMessage(
+      UserAccount userAccount,
+      AgentRole agentRole,
+      Role role,
+      Mode chatMode,
+      String content,
+      String imageUrlsJson) {
+    this.userAccount = userAccount;
+    this.agentRole = agentRole;
+    this.role = role;
+    this.chatMode = chatMode;
     this.content = content;
     this.imageUrlsJson = imageUrlsJson;
   }

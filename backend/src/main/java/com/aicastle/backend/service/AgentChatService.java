@@ -5,6 +5,7 @@ import com.aicastle.backend.dto.ChatDtos.ChatMessageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatMessageRole;
 import com.aicastle.backend.dto.ChatDtos.ChatMode;
 import com.aicastle.backend.dto.ChatDtos.ChatSendRequest;
+import com.aicastle.backend.dto.ChatDtos.NegotiationTodoRequestItem;
 import com.aicastle.backend.dto.ChatDtos.TodoItem;
 import com.aicastle.backend.dto.ChatDtos.TodoPriority;
 import com.aicastle.backend.dto.ChatDtos.TodoStatus;
@@ -77,7 +78,11 @@ public class AgentChatService {
     List<ChatMessageResponse> result = new ArrayList<>();
     result.add(
         ChatMessageResponse.of(
-            "system-intro-" + agentId, ChatMessageRole.SYSTEM, systemIntro, Instant.now()));
+            "system-intro-" + agentId,
+            ChatMessageRole.SYSTEM,
+            ChatMode.CHAT,
+            systemIntro,
+            Instant.now()));
 
     // repository 구현/버전에 따라 불변 리스트가 올 수 있어, reverse는 복사본에 대해 수행한다.
     List<ChatMessage> recentAsc = new ArrayList<>(recentDesc);
@@ -120,7 +125,11 @@ public class AgentChatService {
           agent.getRoleType() == AgentRoleType.MAIN ? "메인 에이전트와의 대화입니다." : "서브 에이전트와의 대화입니다.";
       items.add(
           ChatMessageResponse.of(
-              "system-intro-" + agentId, ChatMessageRole.SYSTEM, systemIntro, Instant.now()));
+              "system-intro-" + agentId,
+              ChatMessageRole.SYSTEM,
+              ChatMode.CHAT,
+              systemIntro,
+              Instant.now()));
     }
 
     Collections.reverse(descItems); // 오래된 -> 최신
@@ -152,6 +161,11 @@ public class AgentChatService {
 
     // 프론트에서 전달되는 이미지 URL(들). 비어 있으면 CHAT 입력만 사용한다.
     List<String> imageUrls = request.imageUrls() == null ? List.of() : request.imageUrls();
+    List<NegotiationTodoRequestItem> negotiationTodos =
+        request.negotiationTodos() == null ? List.of() : request.negotiationTodos();
+    String preferredDeadlineDate =
+        request.preferredDeadlineDate() == null ? "" : request.preferredDeadlineDate().trim();
+    ChatMode mode = request.mode();
 
     UserAccount user =
         userAccountRepository
@@ -164,15 +178,18 @@ public class AgentChatService {
             userId, agentId);
 
     String userImageUrlsJson = toImageUrlsJson(imageUrls);
+    ChatMessage.Mode entityMode = parseEntityMode(mode);
     chatMessageRepository.save(
-        new ChatMessage(user, agent, ChatMessage.Role.USER, content, userImageUrlsJson));
+        new ChatMessage(
+            user, agent, ChatMessage.Role.USER, entityMode, content, userImageUrlsJson));
 
     String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
-    ChatMode mode = request.mode();
     String modePrompt =
         mode == ChatMode.TODO
             ? "\n\n[모드: TODO]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 모든 todo 항목에 날짜/시간을 반드시 포함하라.\n- todo 항목은 짧고 측정 가능해야 한다.\n"
-            : "\n\n[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
+            : mode == ChatMode.TODO_NEGOTIATION
+                ? "\n\n[모드: TODO_NEGOTIATION]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 조정 요청된 TODO를 현실적으로 재배치하되, 마감/우선순위를 고려하라.\n- preferred deadline이 있으면 그 날짜를 우선 존중하라.\n- 반드시 날짜/시간이 포함된 todo[]를 반환하라.\n"
+                : "\n\n[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
 
     String systemPrompt =
         agent.getSystemPrompt()
@@ -216,12 +233,17 @@ public class AgentChatService {
         messages.add(new Message(role, m.getContent()));
       }
 
-      Object userMessageContent = buildUserMessageContent(content, imageUrls);
+      String normalizedContent =
+          mode == ChatMode.TODO_NEGOTIATION
+              ? buildNegotiationContext(content, negotiationTodos, preferredDeadlineDate)
+              : content;
+
+      Object userMessageContent = buildUserMessageContent(normalizedContent, imageUrls);
 
       messages.add(new Message("user", userMessageContent));
 
       reply =
-          mode == ChatMode.TODO
+          mode == ChatMode.TODO || mode == ChatMode.TODO_NEGOTIATION
               ? openAiClient.createTodoJsonWithMessages(messages)
               : (!imageUrls.isEmpty()
                   ? openAiClient.createVisionResponseWithMessages(messages)
@@ -231,7 +253,8 @@ public class AgentChatService {
     }
 
     ChatMessage saved =
-        chatMessageRepository.save(new ChatMessage(user, agent, ChatMessage.Role.ASSISTANT, reply));
+        chatMessageRepository.save(
+            new ChatMessage(user, agent, ChatMessage.Role.ASSISTANT, entityMode, reply, null));
 
     Instant createdAt = saved.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
     return toChatMessageResponse(saved, createdAt);
@@ -247,11 +270,18 @@ public class AgentChatService {
       TodoJsonParsed parsed = tryParseTodoJson(rawContent);
       if (parsed != null) {
         return new ChatMessageResponse(
-            id, role, parsed.text(), createdAt, parsed.todo(), parseImageUrls(message));
+            id,
+            role,
+            parseChatMode(message),
+            parsed.text(),
+            createdAt,
+            parsed.todo(),
+            parseImageUrls(message));
       }
     }
 
-    return new ChatMessageResponse(id, role, rawContent, createdAt, null, parseImageUrls(message));
+    return new ChatMessageResponse(
+        id, role, parseChatMode(message), rawContent, createdAt, null, parseImageUrls(message));
   }
 
   // OpenAI vision 입력을 위해, user message content를 multipart 형식으로 만든다.
@@ -304,6 +334,8 @@ public class AgentChatService {
             item.hasNonNull("description") ? item.path("description").asText(null) : null;
         Integer estimateMinutes =
             item.hasNonNull("estimateMinutes") ? item.path("estimateMinutes").asInt() : null;
+        Integer sourceScheduleId =
+            item.hasNonNull("sourceScheduleId") ? item.path("sourceScheduleId").asInt() : null;
 
         TodoPriority priority =
             parseEnumOrDefault(item.path("priority").asText(null), TodoPriority.MEDIUM);
@@ -321,6 +353,7 @@ public class AgentChatService {
                 title,
                 description,
                 estimateMinutes,
+                sourceScheduleId,
                 priority,
                 status,
                 scheduledDate,
@@ -343,6 +376,60 @@ public class AgentChatService {
     } catch (Exception ignored) {
       return defaultValue;
     }
+  }
+
+  private ChatMode parseChatMode(ChatMessage message) {
+    if (message == null || message.getChatMode() == null) return ChatMode.CHAT;
+    try {
+      return ChatMode.valueOf(message.getChatMode().name());
+    } catch (Exception ignored) {
+      return ChatMode.CHAT;
+    }
+  }
+
+  private ChatMessage.Mode parseEntityMode(ChatMode mode) {
+    if (mode == null) return ChatMessage.Mode.CHAT;
+    try {
+      return ChatMessage.Mode.valueOf(mode.name());
+    } catch (Exception ignored) {
+      return ChatMessage.Mode.CHAT;
+    }
+  }
+
+  private String buildNegotiationContext(
+      String userMessage,
+      List<NegotiationTodoRequestItem> negotiationTodos,
+      String preferredDeadlineDate) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(userMessage == null || userMessage.isBlank() ? "선택한 TODO 일정을 조정해주세요." : userMessage);
+    sb.append("\n\n[조정 요청 컨텍스트]");
+    if (preferredDeadlineDate != null && !preferredDeadlineDate.isBlank()) {
+      sb.append("\n- 희망 완료 기한: ").append(preferredDeadlineDate);
+    }
+    if (negotiationTodos == null || negotiationTodos.isEmpty()) {
+      sb.append("\n- 선택된 TODO 없음");
+      return sb.toString();
+    }
+
+    sb.append("\n- 선택된 TODO 목록:");
+    int index = 1;
+    for (NegotiationTodoRequestItem todo : negotiationTodos) {
+      if (todo == null) continue;
+      sb.append("\n  ")
+          .append(index++)
+          .append(". #")
+          .append(todo.scheduleId() == null ? "-" : todo.scheduleId())
+          .append(" ")
+          .append(todo.title() == null ? "" : todo.title())
+          .append(" (")
+          .append(todo.occurrenceDate() == null ? "" : todo.occurrenceDate())
+          .append(" ")
+          .append(todo.startAt() == null ? "" : todo.startAt())
+          .append("~")
+          .append(todo.endAt() == null ? "" : todo.endAt())
+          .append(")");
+    }
+    return sb.toString();
   }
 
   private String toImageUrlsJson(List<String> imageUrls) {
