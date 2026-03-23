@@ -23,6 +23,7 @@ import { TodoMessage } from '@/components/chat/todo-message'
 
 export const CalendarPage = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
+  const [visibleMonth, setVisibleMonth] = useState<Date>(() => new Date())
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [detailTargetKey, setDetailTargetKey] = useState<string | null>(null)
   const [todoAgentResult, setTodoAgentResult] = useState<ChatMessageInterface | null>(null)
@@ -30,8 +31,8 @@ export const CalendarPage = () => {
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
   const { data: schedulesByDay, isPending } = useSchedulesByDay(selectedDateStr)
 
-  const year = selectedDate.getFullYear()
-  const month = selectedDate.getMonth() + 1
+  const year = visibleMonth.getFullYear()
+  const month = visibleMonth.getMonth() + 1
   const { data: schedulesByMonth } = useSchedulesByMonth(year, month)
 
   const { data: recurringTemplates = [] } = useRecurringScheduleTemplateList()
@@ -174,9 +175,18 @@ export const CalendarPage = () => {
         <Calendar
           mode="single"
           selected={selectedDate}
+          month={visibleMonth}
+          onMonthChange={(nextMonth) => {
+            setVisibleMonth(nextMonth)
+            // 월 이동 시 선택 날짜를 해당 월 1일로 맞춰, 우측 상세/등록 기준 날짜도 함께 이동시킨다.
+            setSelectedDate(new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1))
+            setDetailTargetKey(null)
+            setTodoAgentResult(null)
+          }}
           onSelect={(d) => {
             if (!d) return
             setSelectedDate(d)
+            setVisibleMonth(new Date(d.getFullYear(), d.getMonth(), 1))
           }}
           locale={ko}
           className="[--cell-size:6rem]"
