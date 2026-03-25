@@ -63,6 +63,13 @@ export const AgentChatPage = () => {
   }, [agentId, router])
 
   // 채팅 스크롤 핸들러
+  const chatPageCounts = useMemo(() => {
+    const pages = chatPages?.pages ?? []
+    const pageCount = pages.length
+    const newestItemsCount = pages[0]?.items?.length ?? 0
+    return { pageCount, newestItemsCount }
+  }, [chatPages])
+
   useEffect(() => {
     if (!scrollRef.current) return
     if (isFetchingNextPage) return
@@ -78,7 +85,7 @@ export const AgentChatPage = () => {
 
     // 기본 동작: 최신 메시지 도착 시 바닥으로 스크롤
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [chatPages?.pages?.length, chatPages?.pages?.[0]?.items?.length, isFetchingNextPage])
+  }, [chatPageCounts.pageCount, chatPageCounts.newestItemsCount, isFetchingNextPage])
 
   const messages: ChatMessageInterface[] = useMemo(() => {
     const pages = chatPages?.pages ?? []

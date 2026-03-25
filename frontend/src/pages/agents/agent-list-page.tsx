@@ -59,11 +59,9 @@ export const AgentListPage = () => {
   const [todoWorkbenchFilter, setTodoWorkbenchFilter] =
     useState<TodoWorkbenchDateFilterType>('THIS_WEEK')
   const [selectedWorkbenchTodoIds, setSelectedWorkbenchTodoIds] = useState<number[]>([])
-  const [selectedWorkbenchGroupKeys, setSelectedWorkbenchGroupKeys] = useState<string[]>([])
   const [adjustRequestMessage, setAdjustRequestMessage] =
     useState('선택한 일정이 빡빡해서 조정이 필요해요.')
   const [adjustRequestDeadlineDate, setAdjustRequestDeadlineDate] = useState('')
-  const didInitWorkbenchGroupSelectionRef = useRef(false)
   const negotiationSenderRef = useRef<
     | ((payload: {
         content: string
@@ -89,8 +87,6 @@ export const AgentListPage = () => {
 
   useEffect(() => {
     // 에이전트가 바뀌면 워크벤치 그룹 선택을 다시 초기화한다.
-    didInitWorkbenchGroupSelectionRef.current = false
-    setSelectedWorkbenchGroupKeys([])
     setSelectedWorkbenchTodoIds([])
   }, [effectiveChatAgentId])
 
@@ -193,44 +189,6 @@ export const AgentListPage = () => {
       todos: value.todos,
     }))
   }, [workbenchTodos])
-
-  const allGroupKeys = useMemo(() => todoGroups.map((g) => g.groupKey), [todoGroups])
-
-  useEffect(() => {
-    if (didInitWorkbenchGroupSelectionRef.current) return
-    if (allGroupKeys.length === 0) return
-    setSelectedWorkbenchGroupKeys(allGroupKeys)
-    didInitWorkbenchGroupSelectionRef.current = true
-  }, [allGroupKeys])
-
-  useEffect(() => {
-    // 현재 workbenchTodos에 존재하지 않는 groupKey는 선택에서 제거
-    setSelectedWorkbenchGroupKeys((previous) => {
-      const next = previous.filter((key) => allGroupKeys.includes(key))
-      if (next.length === previous.length && next.every((k, idx) => k === previous[idx]))
-        return previous
-      return next
-    })
-  }, [allGroupKeys])
-
-  useEffect(() => {
-    // 그룹 선택 → TODO 선택 자동 동기화
-    const selectedTodos = workbenchTodos.filter((todo) => {
-      const groupId = todo.groupId ?? null
-      const groupKey = groupId === null ? 'null' : String(groupId)
-      return selectedWorkbenchGroupKeys.includes(groupKey)
-    })
-    const nextTodoIds = selectedTodos.map((todo) => todo.id)
-    setSelectedWorkbenchTodoIds((previous) => {
-      if (
-        nextTodoIds.length === previous.length &&
-        nextTodoIds.every((id, idx) => id === previous[idx])
-      ) {
-        return previous
-      }
-      return nextTodoIds
-    })
-  }, [selectedWorkbenchGroupKeys, workbenchTodos])
 
   const buildEmptyDraftItem = (): TodoDraftItemInterface => {
     const now = new Date()
@@ -347,22 +305,8 @@ export const AgentListPage = () => {
     }
   }
 
-  const handleToggleWorkbenchGroupSelection = (groupKey: string, checked: boolean) => {
-    setSelectedWorkbenchGroupKeys((previous) => {
-      if (checked) {
-        if (previous.includes(groupKey)) return previous
-        return [...previous, groupKey]
-      }
-      return previous.filter((key) => key !== groupKey)
-    })
-  }
-
-  const handleSelectAllWorkbenchGroups = () => {
-    setSelectedWorkbenchGroupKeys(allGroupKeys)
-  }
-
-  const handleClearWorkbenchGroupSelection = () => {
-    setSelectedWorkbenchGroupKeys([])
+  const handleChangeSelectedWorkbenchTodoIds = (next: number[]) => {
+    setSelectedWorkbenchTodoIds(next)
   }
 
   const handleOpenWorkbenchSelectionInEditor = () => {
@@ -481,7 +425,6 @@ export const AgentListPage = () => {
       // 동시 요청을 줄여 DB 경합/부분 실패를 방지한다. (데이터 일관성 우선)
       const createResults: PromiseSettledResult<unknown>[] = []
       for (const item of createTargets) {
-         
         const result = await Promise.resolve()
           .then(() => createSchedule(item.body as ScheduleCreateBodyInterface))
           .then(
@@ -715,15 +658,12 @@ export const AgentListPage = () => {
                 todoWorkbenchFilter={todoWorkbenchFilter}
                 selectedWorkbenchTodoIds={selectedWorkbenchTodoIds}
                 todoGroups={todoGroups}
-                selectedGroupKeys={selectedWorkbenchGroupKeys}
                 isMonthlySchedulesPending={isMonthlySchedulesPending}
                 adjustRequestMessage={adjustRequestMessage}
                 adjustRequestDeadlineDate={adjustRequestDeadlineDate}
                 isSendPending={isChatSendPending}
                 onChangeFilter={setTodoWorkbenchFilter}
-                onToggleGroupSelection={handleToggleWorkbenchGroupSelection}
-                onSelectAllGroups={handleSelectAllWorkbenchGroups}
-                onClearGroupSelection={handleClearWorkbenchGroupSelection}
+                onChangeSelectedTodoIds={handleChangeSelectedWorkbenchTodoIds}
                 onChangeAdjustRequestMessage={setAdjustRequestMessage}
                 onChangeAdjustRequestDeadlineDate={setAdjustRequestDeadlineDate}
                 onOpenSelectionInEditor={handleOpenWorkbenchSelectionInEditor}

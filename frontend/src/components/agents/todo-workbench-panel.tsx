@@ -26,15 +26,12 @@ interface TodoWorkbenchPanelPropsInterface {
   todoWorkbenchFilter: TodoWorkbenchDateFilterType
   selectedWorkbenchTodoIds: number[]
   todoGroups: TodoGroupInterface[]
-  selectedGroupKeys: string[]
   isMonthlySchedulesPending: boolean
   adjustRequestMessage: string
   adjustRequestDeadlineDate: string
   isSendPending: boolean
   onChangeFilter: (filter: TodoWorkbenchDateFilterType) => void
-  onToggleGroupSelection: (groupKey: string, checked: boolean) => void
-  onSelectAllGroups: () => void
-  onClearGroupSelection: () => void
+  onChangeSelectedTodoIds: (nextTodoIds: number[]) => void
   onChangeAdjustRequestMessage: (value: string) => void
   onChangeAdjustRequestDeadlineDate: (value: string) => void
   onOpenSelectionInEditor: () => void
@@ -45,15 +42,12 @@ export const TodoWorkbenchPanel = ({
   todoWorkbenchFilter,
   selectedWorkbenchTodoIds,
   todoGroups,
-  selectedGroupKeys,
   isMonthlySchedulesPending,
   adjustRequestMessage,
   adjustRequestDeadlineDate,
   isSendPending,
   onChangeFilter,
-  onToggleGroupSelection,
-  onSelectAllGroups,
-  onClearGroupSelection,
+  onChangeSelectedTodoIds,
   onChangeAdjustRequestMessage,
   onChangeAdjustRequestDeadlineDate,
   onOpenSelectionInEditor,
@@ -75,9 +69,8 @@ export const TodoWorkbenchPanel = ({
 
   const handleGroupFilterChange = (value: string) => {
     setGroupFilterKey(value)
-    onClearGroupSelection()
-    if (!value) return
-    onToggleGroupSelection(value, true)
+    // 그룹을 바꾸면 선택 상태를 초기화한다. (그룹 내에서 1개씩 선택 가능하게)
+    onChangeSelectedTodoIds([])
   }
 
   const handleTodoWorkbenchFilterChange = (value: string) => {
@@ -85,10 +78,10 @@ export const TodoWorkbenchPanel = ({
     // 필터가 바뀌면 그룹 선택/선택 상태를 항상 초기화한다. (effect로 동기화하지 않음)
     if (next !== 'GROUP') {
       setGroupFilterKey('')
-      onClearGroupSelection()
+      onChangeSelectedTodoIds([])
     } else {
       setGroupFilterKey('')
-      onClearGroupSelection()
+      onChangeSelectedTodoIds([])
     }
     onChangeFilter(next)
   }
@@ -155,11 +148,24 @@ export const TodoWorkbenchPanel = ({
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <span>{selectedWorkbenchTodoIds.length}개 선택</span>
             <div className="flex items-center gap-2">
-              <Button type="button" size="xs" variant="outline" onClick={onSelectAllGroups}>
-                전체 그룹 선택
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => {
+                  const allVisibleIds = visibleGroups.flatMap((g) => g.todos.map((t) => t.id))
+                  onChangeSelectedTodoIds(allVisibleIds)
+                }}
+              >
+                전체 선택
               </Button>
-              <Button type="button" size="xs" variant="outline" onClick={onClearGroupSelection}>
-                그룹 해제
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => onChangeSelectedTodoIds([])}
+              >
+                선택 해제
               </Button>
             </div>
           </div>
@@ -176,39 +182,80 @@ export const TodoWorkbenchPanel = ({
             ) : (
               visibleGroups.map((group) => (
                 <div key={group.groupKey} className="space-y-1 rounded-md border p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedGroupKeys.includes(group.groupKey)}
-                        readOnly
-                        className="mt-0.5"
-                      />
-                      <span className="text-xs font-semibold">
-                        그룹 {group.groupTitle ?? '미지정'}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {group.todos.length}개
-                      </span>
-                    </label>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      onClick={() => onToggleGroupSelection(group.groupKey, false)}
-                      disabled={!selectedGroupKeys.includes(group.groupKey)}
-                    >
-                      제거
-                    </Button>
-                  </div>
+                  {(() => {
+                    const todoIds = group.todos.map((t) => t.id)
+                    const selectedCount = todoIds.filter((id) =>
+                      selectedWorkbenchTodoIds.includes(id),
+                    ).length
+                    const isAllSelected = selectedCount > 0 && selectedCount === todoIds.length
+                    const isAnySelected = selectedCount > 0
+                    return (
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isAllSelected}
+                            onChange={(event) => {
+                              const checked = event.target.checked
+                              const next = new Set(selectedWorkbenchTodoIds)
+                              if (checked) {
+                                todoIds.forEach((id) => next.add(id))
+                              } else {
+                                todoIds.forEach((id) => next.delete(id))
+                              }
+                              onChangeSelectedTodoIds(Array.from(next))
+                            }}
+                            className="mt-0.5"
+                          />
+                          <span className="text-xs font-semibold">
+                            그룹 {group.groupTitle ?? '미지정'}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {isAnySelected
+                              ? `${selectedCount}/${todoIds.length}개`
+                              : `${todoIds.length}개`}
+                          </span>
+                        </label>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={() => {
+                            const next = new Set(selectedWorkbenchTodoIds)
+                            todoIds.forEach((id) => next.delete(id))
+                            onChangeSelectedTodoIds(Array.from(next))
+                          }}
+                          disabled={!isAnySelected}
+                        >
+                          그룹 해제
+                        </Button>
+                      </div>
+                    )
+                  })()}
                   <div className="space-y-1">
                     {group.todos.map((todo) => (
                       <div key={todo.id} className="rounded border border-dashed bg-background p-2">
-                        <p className="text-xs font-medium wrap-break-word">{todo.title}</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {todo.occurrenceDate} {todo.startAt.slice(11, 16)}-
-                          {todo.endAt.slice(11, 16)}
-                        </p>
+                        <label className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedWorkbenchTodoIds.includes(todo.id)}
+                            onChange={(event) => {
+                              const checked = event.target.checked
+                              const next = new Set(selectedWorkbenchTodoIds)
+                              if (checked) next.add(todo.id)
+                              else next.delete(todo.id)
+                              onChangeSelectedTodoIds(Array.from(next))
+                            }}
+                            className="mt-0.5"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium wrap-break-word">{todo.title}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {todo.occurrenceDate} {todo.startAt.slice(11, 16)}-
+                              {todo.endAt.slice(11, 16)}
+                            </p>
+                          </div>
+                        </label>
                       </div>
                     ))}
                   </div>
