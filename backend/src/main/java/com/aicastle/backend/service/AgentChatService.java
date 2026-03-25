@@ -25,6 +25,8 @@ import com.aicastle.backend.repository.UserAccountRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,6 +42,9 @@ import org.springframework.stereotype.Service;
 public class AgentChatService {
 
   private static final Logger log = LoggerFactory.getLogger(AgentChatService.class);
+
+  /** 일정·TODO 제안 시 날짜 혼동 방지 (모델이 과거 연도를 쓰는 문제 완화). */
+  private static final ZoneId PLANNER_ZONE_ID = ZoneId.of("Asia/Seoul");
 
   private final AgentRoleRepository agentRoleRepository;
   private final UserAccountRepository userAccountRepository;
@@ -194,8 +199,23 @@ public class AgentChatService {
                 ? "\n\n[모드: TODO_NEGOTIATION]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 조정 요청된 TODO를 현실적으로 재배치하되, 마감/우선순위를 고려하라.\n- preferred deadline이 있으면 그 날짜를 우선 존중하라.\n- 반드시 날짜/시간이 포함된 todo[]를 반환하라.\n"
                 : "\n\n[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
 
+    LocalDate today = LocalDate.now(PLANNER_ZONE_ID);
+    LocalTime now = LocalTime.now(PLANNER_ZONE_ID).withNano(0);
+    // 한국 사용자 일정 기준: 명시하지 않으면 모델이 2024 등 과거 연도로 JSON을 채우는 경우가 많음
+    String calendarAnchor =
+        "[현재 시각 기준]\n"
+            + "- 오늘 날짜(Asia/Seoul): "
+            + today
+            + "\n"
+            + "- 현재 시각: "
+            + now
+            + "\n"
+            + "- TODO/일정의 scheduledDate, startAt, endAt는 위 오늘을 기준으로 현실적인 날짜·시간을 사용하라. "
+            + "학습 데이터에 묶인 과거 연도(예: 2024)를 사용하지 마라.\n\n";
+
     String systemPrompt =
-        agent.getSystemPrompt()
+        calendarAnchor
+            + agent.getSystemPrompt()
             + "\n\n"
             + "너는 "
             + roleLabel
