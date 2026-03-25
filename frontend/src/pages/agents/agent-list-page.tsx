@@ -163,6 +163,34 @@ export const AgentListPage = () => {
     }
   }
 
+  const findSourceScheduleIdForAdjustedDraft = (draft: {
+    title: string
+    scheduledDate: string
+    startAt: string
+    endAt: string
+  }): number | null => {
+    const normalizedTitle = draft.title.trim()
+    if (!normalizedTitle) return null
+
+    const strictMatched = workbenchTodos.filter(
+      (todo) =>
+        todo.title.trim() === normalizedTitle &&
+        todo.occurrenceDate === draft.scheduledDate &&
+        todo.startAt === draft.startAt &&
+        todo.endAt === draft.endAt,
+    )
+    if (strictMatched.length === 1) return strictMatched[0]?.id ?? null
+
+    // 시간이 조금 변형된 응답도 잡기 위해 title+date 기준으로 한 번 더 시도
+    const looseMatched = workbenchTodos.filter(
+      (todo) =>
+        todo.title.trim() === normalizedTitle && todo.occurrenceDate === draft.scheduledDate,
+    )
+    if (looseMatched.length === 1) return looseMatched[0]?.id ?? null
+
+    return null
+  }
+
   const openTodoDraftPanel = (message: ChatMessageInterface) => {
     const sourceItems = message.todo ?? []
     if (sourceItems.length === 0) return
@@ -176,7 +204,15 @@ export const AgentListPage = () => {
         draftId: `${message.id}-${index}`,
         sourceScheduleId:
           item.sourceScheduleId ??
-          (panelType === 'ADJUST' ? (sourceIdsForReplace[index] ?? null) : null),
+          (panelType === 'ADJUST'
+            ? (sourceIdsForReplace[index] ??
+              findSourceScheduleIdForAdjustedDraft({
+                title: item.title,
+                scheduledDate: item.scheduledDate,
+                startAt: item.startAt,
+                endAt: item.endAt,
+              }))
+            : null),
         selected: true,
         title: item.title,
         description: item.description ?? '',
@@ -318,7 +354,16 @@ export const AgentListPage = () => {
     try {
       const requestItems = validItems.map((item) => ({
         draftId: item.draftId,
-        sourceScheduleId: item.sourceScheduleId,
+        sourceScheduleId:
+          item.sourceScheduleId ??
+          (todoDraftPanelType === 'ADJUST'
+            ? findSourceScheduleIdForAdjustedDraft({
+                title: item.title,
+                scheduledDate: item.scheduledDate,
+                startAt: item.startAt,
+                endAt: item.endAt,
+              })
+            : null),
         body: {
           type: 'TODO' as const,
           title: item.title.trim(),
