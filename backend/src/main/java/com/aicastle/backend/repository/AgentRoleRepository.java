@@ -10,5 +10,13 @@ public interface AgentRoleRepository extends JpaRepository<AgentRole, Long> {
 
   List<AgentRole> findByRoleType(AgentRoleType roleType);
 
+  List<AgentRole> findByRoleTypeOrderByNameAsc(AgentRoleType roleType);
+
+  /** 메인에 매핑된 SUB만 (배치·캘린더 에이전트 선택용). */
+  List<AgentRole> findByRoleTypeAndMainAgentIsNotNullOrderByNameAsc(AgentRoleType roleType);
+
+  List<AgentRole> findByRoleTypeAndMainAgent_IdOrderByNameAsc(
+      AgentRoleType roleType, Long mainAgentId);
+
   Optional<AgentRole> findByName(String name);
 }

@@ -39,6 +39,8 @@ export interface AgentRoleUpdateResponseInterface {
 export interface ActiveAgentDataInterface {
   id: number
   name: string
+  /** 서브가 속한 메인 에이전트 id (배치·오케스트레이션 그룹 키) */
+  mainAgentId: number | null
 }
 
 export interface ActiveAgentListResponseInterface {

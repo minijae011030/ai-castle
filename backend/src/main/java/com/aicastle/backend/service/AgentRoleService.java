@@ -31,9 +31,36 @@ public class AgentRoleService {
 
   @Transactional(readOnly = true)
   public List<ActiveAgentResponse> findActiveAgents() {
-    // 현재 "활성 에이전트" = 서브(과목 선생님) 역할로 정의
-    return agentRoleRepository.findByRoleType(AgentRoleType.SUB).stream()
+    // 배치·일정 할당: 메인에 연결된 SUB만 노출 (미연결 SUB는 제외)
+    return agentRoleRepository
+        .findByRoleTypeAndMainAgentIsNotNullOrderByNameAsc(AgentRoleType.SUB)
+        .stream()
         .map(ActiveAgentResponse::fromEntity)
+        .collect(Collectors.toList());
+  }
+
+  /** 메인 에이전트 목록 (배치 그룹 헤드). */
+  @Transactional(readOnly = true)
+  public List<AgentRoleResponse> findMainAgents() {
+    return agentRoleRepository.findByRoleTypeOrderByNameAsc(AgentRoleType.MAIN).stream()
+        .map(AgentRoleResponse::fromEntity)
+        .collect(Collectors.toList());
+  }
+
+  /** 특정 메인에 매핑된 SUB 목록 (스케줄러·오케스트레이션에서 병렬 호출 대상). */
+  @Transactional(readOnly = true)
+  public List<AgentRoleResponse> findSubAgentsByMainAgentId(Long mainAgentId) {
+    AgentRole main =
+        agentRoleRepository
+            .findById(mainAgentId)
+            .orElseThrow(() -> new IllegalArgumentException("메인 에이전트를 찾을 수 없습니다."));
+    if (main.getRoleType() != AgentRoleType.MAIN) {
+      throw new IllegalArgumentException("지정한 에이전트는 MAIN 타입이 아닙니다.");
+    }
+    return agentRoleRepository
+        .findByRoleTypeAndMainAgent_IdOrderByNameAsc(AgentRoleType.SUB, mainAgentId)
+        .stream()
+        .map(AgentRoleResponse::fromEntity)
         .collect(Collectors.toList());
   }
 

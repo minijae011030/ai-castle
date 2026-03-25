@@ -40,6 +40,19 @@ public class AgentRoleController {
     return ResponseEntity.ok(ResultResponse.success(data));
   }
 
+  @GetMapping("/main")
+  public ResponseEntity<ResultResponse<List<AgentRoleResponse>>> listMainAgents() {
+    List<AgentRoleResponse> data = agentRoleService.findMainAgents();
+    return ResponseEntity.ok(ResultResponse.success(data));
+  }
+
+  @GetMapping("/main/{mainAgentId}/sub-agents")
+  public ResponseEntity<ResultResponse<List<AgentRoleResponse>>> listSubAgentsByMain(
+      @PathVariable Long mainAgentId) {
+    List<AgentRoleResponse> data = agentRoleService.findSubAgentsByMainAgentId(mainAgentId);
+    return ResponseEntity.ok(ResultResponse.success(data));
+  }
+
   @PostMapping
   public ResponseEntity<ResultResponse<AgentRoleResponse>> create(
       @Valid @RequestBody AgentRoleCreateRequest request) {

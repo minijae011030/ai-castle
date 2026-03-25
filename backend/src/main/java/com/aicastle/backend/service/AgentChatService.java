@@ -68,6 +68,7 @@ public class AgentChatService {
         agentRoleRepository
             .findById(agentId)
             .orElseThrow(() -> new IllegalArgumentException("에이전트를 찾을 수 없습니다."));
+    assertSubAgentLinkedToMain(agent);
 
     String systemIntro =
         agent.getRoleType() == AgentRoleType.MAIN ? "메인 에이전트와의 대화입니다." : "서브 에이전트와의 대화입니다.";
@@ -104,6 +105,7 @@ public class AgentChatService {
         agentRoleRepository
             .findById(agentId)
             .orElseThrow(() -> new IllegalArgumentException("에이전트를 찾을 수 없습니다."));
+    assertSubAgentLinkedToMain(agent);
 
     int safeLimit = Math.max(1, Math.min(limit, 50));
     PageRequest pageRequest = PageRequest.of(0, safeLimit);
@@ -152,6 +154,7 @@ public class AgentChatService {
         agentRoleRepository
             .findById(agentId)
             .orElseThrow(() -> new IllegalArgumentException("에이전트를 찾을 수 없습니다."));
+    assertSubAgentLinkedToMain(agent);
 
     String content = request.content() == null ? "" : request.content().trim();
 
@@ -473,6 +476,16 @@ public class AgentChatService {
     } catch (Exception e) {
       log.warn("이미지 URL JSON 역직렬화에 실패했습니다. message={}", e.getMessage());
       return null;
+    }
+  }
+
+  /** SUB는 스케줄러·오케스트레이션 전제상 반드시 단일 MAIN에 연결되어 있어야 한다. */
+  private void assertSubAgentLinkedToMain(AgentRole agent) {
+    if (agent.getRoleType() != AgentRoleType.SUB) {
+      return;
+    }
+    if (agent.getMainAgent() == null) {
+      throw new IllegalArgumentException("서브 에이전트에 메인이 연결되지 않았습니다. 에이전트 설정에서 메인을 지정한 뒤 다시 시도하세요.");
     }
   }
 }

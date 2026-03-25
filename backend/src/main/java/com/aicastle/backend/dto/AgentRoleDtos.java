@@ -24,11 +24,12 @@ public class AgentRoleDtos {
 
   public record AgentRoleUpdateRequest(String systemPrompt, Long mainAgentId) {}
 
-  /** UI 선택용 간단 목록 DTO (id + name). */
-  public record ActiveAgentResponse(Long id, String name) {
+  /** UI/배치용 활성 서브 목록. {@code mainAgentId}는 SUB가 속한 메인(오케스트레이션 그룹 키). */
+  public record ActiveAgentResponse(Long id, String name, Long mainAgentId) {
 
     public static ActiveAgentResponse fromEntity(AgentRole entity) {
-      return new ActiveAgentResponse(entity.getId(), entity.getName());
+      Long mainId = entity.getMainAgent() == null ? null : entity.getMainAgent().getId();
+      return new ActiveAgentResponse(entity.getId(), entity.getName(), mainId);
     }
   }
 }
