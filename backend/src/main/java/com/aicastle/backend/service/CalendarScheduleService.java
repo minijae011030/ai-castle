@@ -171,6 +171,11 @@ public class CalendarScheduleService {
     if (request.type() == ScheduleType.TODO && request.agentId() != null) {
       occurrence.setAgentId(request.agentId());
     }
+    if (request.groupId() != null) {
+      occurrence.setGroupId(request.groupId());
+      String normalizedGroupTitle = request.groupTitle() == null ? "" : request.groupTitle().trim();
+      occurrence.setGroupTitle(normalizedGroupTitle.isBlank() ? "그룹" : normalizedGroupTitle);
+    }
 
     ScheduleOccurrence saved = occurrenceRepository.save(occurrence);
     return ScheduleOccurrenceResponse.fromEntity(saved);
@@ -226,6 +231,12 @@ public class CalendarScheduleService {
               endAt);
       if (request.type() == ScheduleType.TODO && request.agentId() != null) {
         occurrence.setAgentId(request.agentId());
+      }
+      if (request.groupId() != null) {
+        occurrence.setGroupId(request.groupId());
+        String normalizedGroupTitle =
+            request.groupTitle() == null ? "" : request.groupTitle().trim();
+        occurrence.setGroupTitle(normalizedGroupTitle.isBlank() ? "그룹" : normalizedGroupTitle);
       }
       entities.add(occurrence);
     }

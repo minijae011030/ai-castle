@@ -21,6 +21,7 @@ interface TodoAdjustPanelPropsInterface {
   sourceMessageId: string | null
   draftItems: TodoDraftItemInterface[]
   isTodoRegistering: boolean
+  groupTitle: string
   onClose: () => void
   onUpdateDraftItem: (
     draftId: string,
@@ -29,17 +30,20 @@ interface TodoAdjustPanelPropsInterface {
   onRemoveDraftItem: (draftId: string) => void
   onAddDraftItem: () => void
   onApplyAdjustments: () => void
+  onChangeGroupTitle: (value: string) => void
 }
 
 export const TodoAdjustPanel = ({
   sourceMessageId,
   draftItems,
   isTodoRegistering,
+  groupTitle,
   onClose,
   onUpdateDraftItem,
   onRemoveDraftItem,
   onAddDraftItem,
   onApplyAdjustments,
+  onChangeGroupTitle,
 }: TodoAdjustPanelPropsInterface) => {
   return (
     <Card>
@@ -54,6 +58,14 @@ export const TodoAdjustPanel = ({
           메시지 #{sourceMessageId} 조정안을 적용합니다. 변경된 항목만 새로 등록하고 원본 TODO를
           치환합니다.
         </p>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-muted-foreground">그룹 이름</label>
+          <Input
+            value={groupTitle}
+            onChange={(event) => onChangeGroupTitle(event.target.value)}
+            placeholder="그룹"
+          />
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
         <div className="max-h-[min(1000px,calc(100dvh-270px))] space-y-2 overflow-auto pr-1">

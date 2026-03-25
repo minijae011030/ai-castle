@@ -62,6 +62,7 @@ public class OpenAiChatDtos {
                   "object",
                   new Properties(
                       new SchemaString("string"),
+                      new SchemaString("string"),
                       new SchemaTodoArray(
                           "array",
                           new TodoItemSchema(
@@ -89,7 +90,7 @@ public class OpenAiChatDtos {
                                   "startAt",
                                   "endAt"),
                               false))),
-                  List.of("text", "todo"),
+                  List.of("text", "groupTitle", "todo"),
                   false)));
     }
   }
@@ -103,7 +104,7 @@ public class OpenAiChatDtos {
       @com.fasterxml.jackson.annotation.JsonProperty("additionalProperties")
           boolean additionalProperties) {}
 
-  public record Properties(Object text, Object todo) {}
+  public record Properties(Object text, Object groupTitle, Object todo) {}
 
   public record SchemaString(String type) {}
 

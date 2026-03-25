@@ -21,6 +21,7 @@ interface TodoRegisterPanelPropsInterface {
   sourceMessageId: string | null
   draftItems: TodoDraftItemInterface[]
   isTodoRegistering: boolean
+  groupTitle: string
   onClose: () => void
   onUpdateDraftItem: (
     draftId: string,
@@ -29,17 +30,20 @@ interface TodoRegisterPanelPropsInterface {
   onRemoveDraftItem: (draftId: string) => void
   onAddDraftItem: () => void
   onRegister: () => void
+  onChangeGroupTitle: (value: string) => void
 }
 
 export const TodoRegisterPanel = ({
   sourceMessageId,
   draftItems,
   isTodoRegistering,
+  groupTitle,
   onClose,
   onUpdateDraftItem,
   onRemoveDraftItem,
   onAddDraftItem,
   onRegister,
+  onChangeGroupTitle,
 }: TodoRegisterPanelPropsInterface) => {
   return (
     <Card>
@@ -53,6 +57,14 @@ export const TodoRegisterPanel = ({
         <p className="text-[11px] text-muted-foreground">
           메시지 #{sourceMessageId}에서 가져온 투두입니다. 수정/부분 삭제 후 등록하세요.
         </p>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-muted-foreground">그룹 이름</label>
+          <Input
+            value={groupTitle}
+            onChange={(event) => onChangeGroupTitle(event.target.value)}
+            placeholder="그룹"
+          />
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
         <div className="max-h-[min(1000px,calc(100dvh-270px))] space-y-2 overflow-auto pr-1">

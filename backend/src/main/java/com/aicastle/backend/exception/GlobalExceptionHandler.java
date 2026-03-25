@@ -57,6 +57,8 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(DataAccessException.class)
   public ResponseEntity<ResultResponse<Void>> handleDataAccess(DataAccessException ex) {
     HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+    // DB 예외는 원인이 중요한 경우가 많아 서버 로그에 남긴다.
+    log.error("Database error", ex);
     ResultResponse<Void> body = ResultResponse.error(status.value(), "데이터베이스 처리 중 오류가 발생했습니다.");
     return ResponseEntity.status(status).body(body);
   }

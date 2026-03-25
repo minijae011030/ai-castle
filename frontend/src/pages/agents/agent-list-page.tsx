@@ -52,15 +52,18 @@ export const AgentListPage = () => {
   const [todoDraftSourceMessageId, setTodoDraftSourceMessageId] = useState<string | null>(null)
   const [todoDraftPanelType, setTodoDraftPanelType] = useState<TodoDraftPanelType>('REGISTER')
   const [isTodoRegistering, setIsTodoRegistering] = useState(false)
+  const [todoDraftGroupTitle, setTodoDraftGroupTitle] = useState<string>('그룹')
   const [negotiationSourceTodoIdsByMessageId, setNegotiationSourceTodoIdsByMessageId] = useState<
     Record<string, number[]>
   >({})
   const [todoWorkbenchFilter, setTodoWorkbenchFilter] =
     useState<TodoWorkbenchDateFilterType>('THIS_WEEK')
   const [selectedWorkbenchTodoIds, setSelectedWorkbenchTodoIds] = useState<number[]>([])
+  const [selectedWorkbenchGroupKeys, setSelectedWorkbenchGroupKeys] = useState<string[]>([])
   const [adjustRequestMessage, setAdjustRequestMessage] =
     useState('선택한 일정이 빡빡해서 조정이 필요해요.')
   const [adjustRequestDeadlineDate, setAdjustRequestDeadlineDate] = useState('')
+  const didInitWorkbenchGroupSelectionRef = useRef(false)
   const negotiationSenderRef = useRef<
     | ((payload: {
         content: string
@@ -83,6 +86,13 @@ export const AgentListPage = () => {
   // 초기 진입 시에는 state를 effect로 세팅하지 않고, 파생값으로 "첫 에이전트 채팅"을 기본으로 보여준다.
   const effectiveChatAgentId = chatAgentId ?? agents[0]?.id ?? null
   const effectiveSelectedAgentId = selectedAgentId ?? effectiveChatAgentId
+
+  useEffect(() => {
+    // 에이전트가 바뀌면 워크벤치 그룹 선택을 다시 초기화한다.
+    didInitWorkbenchGroupSelectionRef.current = false
+    setSelectedWorkbenchGroupKeys([])
+    setSelectedWorkbenchTodoIds([])
+  }, [effectiveChatAgentId])
 
   const createMutation = useCreateAgentRole()
   const updateMutation = useUpdateAgentRole()
@@ -113,6 +123,10 @@ export const AgentListPage = () => {
     }
 
     const isInRange = (targetDate: Date) => {
+      if (todoWorkbenchFilter === 'GROUP') {
+        // 그룹별 조회는 기간 필터를 타지 않는다.
+        return true
+      }
       if (todoWorkbenchFilter === 'TODAY') {
         return targetDate >= dayStart && targetDate <= dayEnd
       }
@@ -155,18 +169,68 @@ export const AgentListPage = () => {
     }
   }, [agents, chatAgentId])
 
+  const todoGroups = useMemo(() => {
+    const groupMap = new Map<
+      string,
+      { groupId: string | null; groupTitle: string | null; todos: ScheduleOccurrenceInterface[] }
+    >()
+    for (const todo of workbenchTodos) {
+      const groupId = todo.groupId ?? null
+      const groupKey = groupId === null ? 'null' : String(groupId)
+      const existing = groupMap.get(groupKey)
+      if (!existing) {
+        groupMap.set(groupKey, { groupId, groupTitle: todo.groupTitle ?? null, todos: [todo] })
+      } else {
+        if (existing.groupTitle === null && todo.groupTitle) existing.groupTitle = todo.groupTitle
+        existing.todos.push(todo)
+      }
+    }
+
+    return Array.from(groupMap.entries()).map(([groupKey, value]) => ({
+      groupKey,
+      groupId: value.groupId,
+      groupTitle: value.groupTitle,
+      todos: value.todos,
+    }))
+  }, [workbenchTodos])
+
+  const allGroupKeys = useMemo(() => todoGroups.map((g) => g.groupKey), [todoGroups])
+
   useEffect(() => {
+    if (didInitWorkbenchGroupSelectionRef.current) return
+    if (allGroupKeys.length === 0) return
+    setSelectedWorkbenchGroupKeys(allGroupKeys)
+    didInitWorkbenchGroupSelectionRef.current = true
+  }, [allGroupKeys])
+
+  useEffect(() => {
+    // 현재 workbenchTodos에 존재하지 않는 groupKey는 선택에서 제거
+    setSelectedWorkbenchGroupKeys((previous) => {
+      const next = previous.filter((key) => allGroupKeys.includes(key))
+      if (next.length === previous.length && next.every((k, idx) => k === previous[idx]))
+        return previous
+      return next
+    })
+  }, [allGroupKeys])
+
+  useEffect(() => {
+    // 그룹 선택 → TODO 선택 자동 동기화
+    const selectedTodos = workbenchTodos.filter((todo) => {
+      const groupId = todo.groupId ?? null
+      const groupKey = groupId === null ? 'null' : String(groupId)
+      return selectedWorkbenchGroupKeys.includes(groupKey)
+    })
+    const nextTodoIds = selectedTodos.map((todo) => todo.id)
     setSelectedWorkbenchTodoIds((previous) => {
-      const next = previous.filter((todoId) => workbenchTodos.some((todo) => todo.id === todoId))
       if (
-        next.length === previous.length &&
-        next.every((todoId, index) => todoId === previous[index])
+        nextTodoIds.length === previous.length &&
+        nextTodoIds.every((id, idx) => id === previous[idx])
       ) {
         return previous
       }
-      return next
+      return nextTodoIds
     })
-  }, [workbenchTodos])
+  }, [selectedWorkbenchGroupKeys, workbenchTodos])
 
   const buildEmptyDraftItem = (): TodoDraftItemInterface => {
     const now = new Date()
@@ -225,6 +289,7 @@ export const AgentListPage = () => {
       message.mode === 'TODO_NEGOTIATION' ? 'ADJUST' : 'REGISTER'
     setTodoDraftSourceMessageId(message.id)
     setTodoDraftPanelType(panelType)
+    setTodoDraftGroupTitle(message.groupTitle ?? '그룹')
     setTodoDraftItems(
       sourceItems.map((item, index) => ({
         draftId: `${message.id}-${index}`,
@@ -282,22 +347,22 @@ export const AgentListPage = () => {
     }
   }
 
-  const handleToggleWorkbenchTodoSelection = (todoId: number, checked: boolean) => {
-    setSelectedWorkbenchTodoIds((previous) => {
+  const handleToggleWorkbenchGroupSelection = (groupKey: string, checked: boolean) => {
+    setSelectedWorkbenchGroupKeys((previous) => {
       if (checked) {
-        if (previous.includes(todoId)) return previous
-        return [...previous, todoId]
+        if (previous.includes(groupKey)) return previous
+        return [...previous, groupKey]
       }
-      return previous.filter((id) => id !== todoId)
+      return previous.filter((key) => key !== groupKey)
     })
   }
 
-  const handleSelectAllWorkbenchTodos = () => {
-    setSelectedWorkbenchTodoIds(workbenchTodos.map((todo) => todo.id))
+  const handleSelectAllWorkbenchGroups = () => {
+    setSelectedWorkbenchGroupKeys(allGroupKeys)
   }
 
-  const handleClearWorkbenchSelection = () => {
-    setSelectedWorkbenchTodoIds([])
+  const handleClearWorkbenchGroupSelection = () => {
+    setSelectedWorkbenchGroupKeys([])
   }
 
   const handleOpenWorkbenchSelectionInEditor = () => {
@@ -311,6 +376,7 @@ export const AgentListPage = () => {
     setTodoDraftSourceMessageId('workbench')
     setTodoDraftPanelType('ADJUST')
     setTodoDraftItems(selectedTodos.map(convertScheduleToDraftItem))
+    setTodoDraftGroupTitle('조정안')
   }
 
   const handleRequestTodoNegotiation = () => {
@@ -378,6 +444,13 @@ export const AgentListPage = () => {
 
     setIsTodoRegistering(true)
     try {
+      // REGISTER/ADJUST 모두: 이번 응답(요청)에서 생성되는 TODO 묶음을 1개의 groupId로 고정한다.
+      const nextGroupId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      const normalizedGroupTitle = todoDraftGroupTitle.trim() || '그룹'
+
       const requestItems = validItems.map((item) => ({
         draftId: item.draftId,
         sourceScheduleId:
@@ -398,14 +471,25 @@ export const AgentListPage = () => {
           startAt: item.startAt,
           endAt: item.endAt,
           agentId: effectiveChatAgentId,
+          groupId: nextGroupId ?? undefined,
+          groupTitle: normalizedGroupTitle,
         },
       }))
 
       const createTargets = requestItems
 
-      const createResults = await Promise.allSettled(
-        createTargets.map((item) => createSchedule(item.body as ScheduleCreateBodyInterface)),
-      )
+      // 동시 요청을 줄여 DB 경합/부분 실패를 방지한다. (데이터 일관성 우선)
+      const createResults: PromiseSettledResult<unknown>[] = []
+      for (const item of createTargets) {
+         
+        const result = await Promise.resolve()
+          .then(() => createSchedule(item.body as ScheduleCreateBodyInterface))
+          .then(
+            (value) => ({ status: 'fulfilled', value }) as const,
+            (reason) => ({ status: 'rejected', reason }) as const,
+          )
+        createResults.push(result)
+      }
       const successIndexes = createResults
         .map((result, index) => (result.status === 'fulfilled' ? index : -1))
         .filter((index) => index >= 0)
@@ -414,7 +498,8 @@ export const AgentListPage = () => {
 
       const sourceIdsUsedForDelete = new Set<number>()
       let removedOriginalCount = 0
-      if (successIndexes.length > 0) {
+      // 삭제(치환)는 조정(ADJUST) 모드에서만 수행한다. (REGISTER에서는 원본을 건드리지 않음)
+      if (todoDraftPanelType === 'ADJUST' && successIndexes.length > 0) {
         const sourceIdsToDelete = successIndexes
           .map((index) => createTargets[index]?.sourceScheduleId)
           .filter((id): id is number => typeof id === 'number' && id > 0)
@@ -440,7 +525,11 @@ export const AgentListPage = () => {
             `${successCount}개의 조정 TODO를 등록하고 기존 TODO ${removedOriginalCount}개를 삭제했습니다.`,
           )
         } else {
-          toast.success(`${successCount}개의 투두를 캘린더에 등록했습니다.`)
+          toast.success(
+            todoDraftPanelType === 'ADJUST'
+              ? `${successCount}개의 조정 TODO를 등록했습니다.`
+              : `${successCount}개의 투두를 캘린더에 등록했습니다.`,
+          )
         }
         if (sourceIdsUsedForDelete.size > 0) {
           setNegotiationSourceTodoIdsByMessageId((previous) => {
@@ -563,6 +652,7 @@ export const AgentListPage = () => {
     setTodoDraftItems([])
     setTodoDraftSourceMessageId(null)
     setTodoDraftPanelType('REGISTER')
+    setTodoDraftGroupTitle('그룹')
   }
 
   const handleRemoveTodoDraftItem = (draftId: string) => {
@@ -624,15 +714,16 @@ export const AgentListPage = () => {
               <TodoWorkbenchPanel
                 todoWorkbenchFilter={todoWorkbenchFilter}
                 selectedWorkbenchTodoIds={selectedWorkbenchTodoIds}
-                workbenchTodos={workbenchTodos}
+                todoGroups={todoGroups}
+                selectedGroupKeys={selectedWorkbenchGroupKeys}
                 isMonthlySchedulesPending={isMonthlySchedulesPending}
                 adjustRequestMessage={adjustRequestMessage}
                 adjustRequestDeadlineDate={adjustRequestDeadlineDate}
                 isSendPending={isChatSendPending}
                 onChangeFilter={setTodoWorkbenchFilter}
-                onToggleSelection={handleToggleWorkbenchTodoSelection}
-                onSelectAll={handleSelectAllWorkbenchTodos}
-                onClearSelection={handleClearWorkbenchSelection}
+                onToggleGroupSelection={handleToggleWorkbenchGroupSelection}
+                onSelectAllGroups={handleSelectAllWorkbenchGroups}
+                onClearGroupSelection={handleClearWorkbenchGroupSelection}
                 onChangeAdjustRequestMessage={setAdjustRequestMessage}
                 onChangeAdjustRequestDeadlineDate={setAdjustRequestDeadlineDate}
                 onOpenSelectionInEditor={handleOpenWorkbenchSelectionInEditor}
@@ -644,23 +735,27 @@ export const AgentListPage = () => {
                   <TodoAdjustPanel
                     sourceMessageId={todoDraftSourceMessageId}
                     draftItems={todoDraftItems}
+                    groupTitle={todoDraftGroupTitle}
                     isTodoRegistering={isTodoRegistering}
                     onClose={handleCloseTodoDraftPanel}
                     onUpdateDraftItem={updateTodoDraftItem}
                     onRemoveDraftItem={handleRemoveTodoDraftItem}
                     onAddDraftItem={handleAddTodoDraftItem}
                     onApplyAdjustments={registerTodoDraftItems}
+                    onChangeGroupTitle={setTodoDraftGroupTitle}
                   />
                 ) : (
                   <TodoRegisterPanel
                     sourceMessageId={todoDraftSourceMessageId}
                     draftItems={todoDraftItems}
+                    groupTitle={todoDraftGroupTitle}
                     isTodoRegistering={isTodoRegistering}
                     onClose={handleCloseTodoDraftPanel}
                     onUpdateDraftItem={updateTodoDraftItem}
                     onRemoveDraftItem={handleRemoveTodoDraftItem}
                     onAddDraftItem={handleAddTodoDraftItem}
                     onRegister={registerTodoDraftItems}
+                    onChangeGroupTitle={setTodoDraftGroupTitle}
                   />
                 )
               ) : null}

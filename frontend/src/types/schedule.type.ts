@@ -11,6 +11,8 @@ export interface ScheduleOccurrenceInterface {
   endAt: string
   recurringTemplateId: number | null
   agentId: number | null
+  groupId: string | null
+  groupTitle: string | null
 }
 
 export interface ScheduleOccurrenceListResponseInterface {
@@ -40,6 +42,8 @@ export interface ScheduleCreateBodyInterface {
   endAt: string
   recurringTemplateId?: number
   agentId?: number
+  groupId?: string
+  groupTitle?: string
 }
 
 export interface ScheduleRangeCreateBodyInterface {
@@ -51,6 +55,8 @@ export interface ScheduleRangeCreateBodyInterface {
   startTime: string
   endTime: string
   agentId?: number
+  groupId?: string
+  groupTitle?: string
 }
 
 export interface ScheduleUpdateBodyInterface {

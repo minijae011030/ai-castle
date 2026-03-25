@@ -76,6 +76,8 @@ export const CalendarPage = () => {
           endAt: `${dateStr}T${t.endTime}`,
           recurringTemplateId: t.id,
           agentId: null,
+          groupId: null,
+          groupTitle: null,
         })
       }
     }

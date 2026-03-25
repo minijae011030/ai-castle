@@ -194,9 +194,9 @@ public class AgentChatService {
     String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
     String modePrompt =
         mode == ChatMode.TODO
-            ? "\n\n[모드: TODO]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 모든 todo 항목에 날짜/시간을 반드시 포함하라.\n- todo 항목은 짧고 측정 가능해야 한다.\n"
+            ? "\n\n[모드: TODO]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"groupTitle\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 모든 todo 항목에 날짜/시간을 반드시 포함하라.\n- todo 항목은 짧고 측정 가능해야 한다.\n"
             : mode == ChatMode.TODO_NEGOTIATION
-                ? "\n\n[모드: TODO_NEGOTIATION]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 조정 요청된 TODO를 현실적으로 재배치하되, 마감/우선순위를 고려하라.\n- preferred deadline이 있으면 그 날짜를 우선 존중하라.\n- 반드시 날짜/시간이 포함된 todo[]를 반환하라.\n"
+                ? "\n\n[모드: TODO_NEGOTIATION]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"groupTitle\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 조정 요청된 TODO를 현실적으로 재배치하되, 마감/우선순위를 고려하라.\n- preferred deadline이 있으면 그 날짜를 우선 존중하라.\n- 반드시 날짜/시간이 포함된 todo[]를 반환하라.\n"
                 : "\n\n[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
 
     LocalDate today = LocalDate.now(PLANNER_ZONE_ID);
@@ -299,12 +299,20 @@ public class AgentChatService {
             parsed.text(),
             createdAt,
             parsed.todo(),
-            parseImageUrls(message));
+            parseImageUrls(message),
+            parsed.groupTitle());
       }
     }
 
     return new ChatMessageResponse(
-        id, role, parseChatMode(message), rawContent, createdAt, null, parseImageUrls(message));
+        id,
+        role,
+        parseChatMode(message),
+        rawContent,
+        createdAt,
+        null,
+        parseImageUrls(message),
+        null);
   }
 
   // OpenAI vision 입력을 위해, user message content를 multipart 형식으로 만든다.
@@ -330,7 +338,7 @@ public class AgentChatService {
     return parts;
   }
 
-  private record TodoJsonParsed(String text, List<TodoItem> todo) {}
+  private record TodoJsonParsed(String text, String groupTitle, List<TodoItem> todo) {}
 
   private TodoJsonParsed tryParseTodoJson(String raw) {
     String trimmed = raw == null ? "" : raw.trim();
@@ -341,11 +349,17 @@ public class AgentChatService {
       JsonNode root = objectMapper.readTree(trimmed);
       if (root == null || !root.isObject()) return null;
       JsonNode textNode = root.get("text");
+      JsonNode groupTitleNode = root.get("groupTitle");
       JsonNode todoNode = root.get("todo");
       if (textNode == null || !textNode.isTextual()) return null;
       if (todoNode == null || !todoNode.isArray()) return null;
 
       String text = textNode.asText("");
+      String groupTitle =
+          groupTitleNode != null && groupTitleNode.isTextual()
+              ? groupTitleNode.asText("").trim()
+              : "";
+      if (groupTitle.isBlank()) groupTitle = "그룹";
       List<TodoItem> todo = new ArrayList<>();
       for (JsonNode item : todoNode) {
         if (item == null || !item.isObject()) continue;
@@ -384,7 +398,7 @@ public class AgentChatService {
                 endAt));
       }
 
-      return new TodoJsonParsed(text, todo);
+      return new TodoJsonParsed(text, groupTitle, todo);
     } catch (Exception ignored) {
       return null;
     }

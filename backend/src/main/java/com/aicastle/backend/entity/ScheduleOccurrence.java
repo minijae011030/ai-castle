@@ -39,6 +39,14 @@ public class ScheduleOccurrence extends BaseTimeEntity {
   @Column(name = "agent_id")
   private Long agentId;
 
+  /** 같은 요청/컨텍스트에서 생성된 TODO 묶음 식별자 (UUID 문자열). */
+  @Column(name = "group_id")
+  private String groupId;
+
+  /** 사용자에게 표시할 TODO 묶음 이름. (그룹 단위로 동일하게 저장) */
+  @Column(name = "group_title", length = 200)
+  private String groupTitle;
+
   // 공통 표출 필드 (스냅샷)
   @Column(nullable = false, length = 200)
   private String title;

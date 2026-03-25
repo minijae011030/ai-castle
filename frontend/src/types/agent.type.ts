@@ -63,5 +63,5 @@ export interface TodoDraftItemInterface {
   endAt: string
 }
 
-export type TodoWorkbenchDateFilterType = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH'
+export type TodoWorkbenchDateFilterType = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'GROUP'
 export type TodoDraftPanelType = 'REGISTER' | 'ADJUST'
