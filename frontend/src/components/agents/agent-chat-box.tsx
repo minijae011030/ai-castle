@@ -158,29 +158,37 @@ export const AgentChatBox = ({
 
   const handlePickChatImage: React.ChangeEventHandler<HTMLInputElement> = async (event) => {
     const inputEl = event.currentTarget
-    const file = event.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      toast.error('이미지 파일만 첨부할 수 있습니다.')
-      return
-    }
+    const selectedFiles = Array.from(event.target.files ?? [])
+    if (selectedFiles.length === 0) return
     const maxSizeBytes = 3 * 1024 * 1024
-    if (file.size > maxSizeBytes) {
-      toast.error('이미지 용량이 너무 큽니다. 3MB 이하로 올려주세요.')
-      return
-    }
+    const maxImageCount = 5
     try {
-      const previewObjectUrl = URL.createObjectURL(file)
+      const nextDraftItems: ImageDraftItemInterface[] = []
+      for (const file of selectedFiles) {
+        if (!file.type.startsWith('image/')) {
+          toast.error('이미지 파일만 첨부할 수 있습니다.')
+          continue
+        }
+        if (file.size > maxSizeBytes) {
+          toast.error(`"${file.name}" 용량이 너무 큽니다. 3MB 이하만 가능해요.`)
+          continue
+        }
+        nextDraftItems.push({
+          id: `chat-image-${makeRandomId()}`,
+          file,
+          preview_object_url: URL.createObjectURL(file),
+          mime_type: file.type,
+        })
+      }
+      if (nextDraftItems.length === 0) return
+
       setChatImageDrafts((previous) => {
-        revokeDraftObjectUrls(previous)
-        return [
-          {
-            id: `chat-image-${makeRandomId()}`,
-            file,
-            preview_object_url: previewObjectUrl,
-            mime_type: file.type,
-          },
-        ]
+        const merged = [...previous, ...nextDraftItems]
+        if (merged.length <= maxImageCount) return merged
+        const overflowItems = merged.slice(maxImageCount)
+        revokeDraftObjectUrls(overflowItems)
+        toast.error(`이미지는 최대 ${maxImageCount}장까지 첨부할 수 있습니다.`)
+        return merged.slice(0, maxImageCount)
       })
       setUploadedImageUrls([])
     } catch {
@@ -197,6 +205,16 @@ export const AgentChatBox = ({
     })
     setUploadedImageUrls([])
     if (chatImageInputRef.current) chatImageInputRef.current.value = ''
+  }
+
+  const handleRemoveChatImageDraft = (draftId: string) => {
+    setChatImageDrafts((previous) => {
+      const removeTarget = previous.find((draft) => draft.id === draftId)
+      if (removeTarget) {
+        revokeDraftObjectUrls([removeTarget])
+      }
+      return previous.filter((draft) => draft.id !== draftId)
+    })
   }
 
   const sendChat = async (payload: {
@@ -434,6 +452,7 @@ export const AgentChatBox = ({
           <input
             type="file"
             accept="image/*"
+            multiple
             ref={chatImageInputRef}
             style={{ display: 'none' }}
             onChange={handlePickChatImage}
@@ -449,33 +468,45 @@ export const AgentChatBox = ({
                 최근 업로드 URL 확보됨 ({uploadedImageUrls.length})
               </p>
             ) : (
-              <p className="text-[11px] text-muted-foreground">1장만 첨부 (미리보기)</p>
+              <p className="text-[11px] text-muted-foreground">최대 5장 첨부 (미리보기)</p>
             )}
           </div>
 
           {chatImageDrafts.length > 0 ? (
-            <div className="flex items-start gap-2 rounded-md border bg-card p-2">
-              <img
-                src={chatImageDrafts[0]?.preview_object_url}
-                alt="이미지 미리보기"
-                className="h-20 w-20 rounded border object-cover"
-              />
-              <div className="flex flex-1 flex-col">
-                <p className="text-xs font-medium line-clamp-2">{chatImageDrafts[0]?.file.name}</p>
-                <p className="text-[11px] text-muted-foreground break-all">
-                  {chatImageDrafts[0]?.mime_type}
-                </p>
-                <div className="mt-2">
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="outline"
-                    onClick={handleClearChatImage}
-                    disabled={isUploadingChatImages}
-                  >
-                    이미지 제거
-                  </Button>
-                </div>
+            <div className="space-y-2 rounded-md border bg-card p-2">
+              <div className="grid grid-cols-2 gap-2">
+                {chatImageDrafts.map((draft) => (
+                  <div key={draft.id} className="rounded border p-1">
+                    <img
+                      src={draft.preview_object_url}
+                      alt="이미지 미리보기"
+                      className="h-20 w-full rounded object-cover"
+                    />
+                    <p className="mt-1 text-[11px] font-medium line-clamp-1">{draft.file.name}</p>
+                    <div className="mt-1 flex justify-end">
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => handleRemoveChatImageDraft(draft.id)}
+                        disabled={isUploadingChatImages}
+                      >
+                        제거
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  onClick={handleClearChatImage}
+                  disabled={isUploadingChatImages}
+                >
+                  전체 제거
+                </Button>
               </div>
             </div>
           ) : null}

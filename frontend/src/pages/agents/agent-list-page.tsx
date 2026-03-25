@@ -33,12 +33,20 @@ const emptyForm = {
   systemPrompt: '',
   mainAgentId: null as number | null,
 }
+const lastChatAgentStorageKey = 'agents:last_chat_agent_id'
 
 export const AgentListPage = () => {
   const queryClient = useQueryClient()
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
-  const [chatAgentId, setChatAgentId] = useState<number | null>(null)
+  const [chatAgentId, setChatAgentId] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null
+    const rawValue = window.localStorage.getItem(lastChatAgentStorageKey)
+    if (!rawValue) return null
+    const parsedValue = Number(rawValue)
+    if (!Number.isInteger(parsedValue) || parsedValue <= 0) return null
+    return parsedValue
+  })
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [todoDraftItems, setTodoDraftItems] = useState<TodoDraftItemInterface[]>([])
   const [todoDraftSourceMessageId, setTodoDraftSourceMessageId] = useState<string | null>(null)
@@ -128,6 +136,24 @@ export const AgentListPage = () => {
         return aTime - bTime
       })
   }, [effectiveChatAgentId, monthlySchedules, todayBaseDate, todoWorkbenchFilter])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (chatAgentId === null) {
+      window.localStorage.removeItem(lastChatAgentStorageKey)
+      return
+    }
+    window.localStorage.setItem(lastChatAgentStorageKey, String(chatAgentId))
+  }, [chatAgentId])
+
+  useEffect(() => {
+    if (chatAgentId === null) return
+    if (agents.length === 0) return
+    const exists = agents.some((agent) => agent.id === chatAgentId)
+    if (!exists) {
+      setChatAgentId(agents[0]?.id ?? null)
+    }
+  }, [agents, chatAgentId])
 
   useEffect(() => {
     setSelectedWorkbenchTodoIds((previous) => {
