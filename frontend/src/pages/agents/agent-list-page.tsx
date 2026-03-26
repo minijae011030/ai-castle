@@ -1,7 +1,7 @@
 import { TodoAdjustPanel } from '@/components/agents/todo-adjust-panel'
 import { TodoRegisterPanel } from '@/components/agents/todo-register-panel'
 import { AgentSettingsPanel } from '@/components/agents/agent-settings-panel'
-import { TodoWorkbenchPanel } from '@/components/agents/todo-workbench-panel'
+import { AgentBoundTodoPanel } from '@/components/agents/agent-bound-todo-panel'
 import { AgentChatBox } from '@/components/agents/agent-chat-box'
 import { AgentListPanel } from '@/components/agents/agent-list-panel'
 import {
@@ -18,12 +18,10 @@ import type {
   AgentRoleDataInterface,
   TodoDraftItemInterface,
   TodoDraftPanelType,
-  TodoWorkbenchDateFilterType,
 } from '@/types/agent.type'
-import type { ChatMessageInterface, NegotiationTodoRequestItemInterface } from '@/types/chat.type'
-import type { ScheduleOccurrenceInterface } from '@/types/schedule.type'
+import type { ChatMessageInterface } from '@/types/chat.type'
 import type { ScheduleCreateBodyInterface } from '@/types/schedule.type'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -53,24 +51,6 @@ export const AgentListPage = () => {
   const [todoDraftPanelType, setTodoDraftPanelType] = useState<TodoDraftPanelType>('REGISTER')
   const [isTodoRegistering, setIsTodoRegistering] = useState(false)
   const [todoDraftGroupTitle, setTodoDraftGroupTitle] = useState<string>('그룹')
-  const [negotiationSourceTodoIdsByMessageId, setNegotiationSourceTodoIdsByMessageId] = useState<
-    Record<string, number[]>
-  >({})
-  const [todoWorkbenchFilter, setTodoWorkbenchFilter] =
-    useState<TodoWorkbenchDateFilterType>('THIS_WEEK')
-  const [selectedWorkbenchTodoIds, setSelectedWorkbenchTodoIds] = useState<number[]>([])
-  const [adjustRequestMessage, setAdjustRequestMessage] =
-    useState('선택한 일정이 빡빡해서 조정이 필요해요.')
-  const [adjustRequestDeadlineDate, setAdjustRequestDeadlineDate] = useState('')
-  const negotiationSenderRef = useRef<
-    | ((payload: {
-        content: string
-        negotiationTodos: NegotiationTodoRequestItemInterface[]
-        preferredDeadlineDate?: string
-      }) => boolean)
-    | null
-  >(null)
-  const [isChatSendPending, setIsChatSendPending] = useState(false)
 
   const { data: agents = [], isPending } = useAgentRoleList()
   const todayBaseDate = useMemo(() => new Date(), [])
@@ -85,11 +65,6 @@ export const AgentListPage = () => {
   const effectiveChatAgentId = chatAgentId ?? agents[0]?.id ?? null
   const effectiveSelectedAgentId = selectedAgentId ?? effectiveChatAgentId
 
-  useEffect(() => {
-    // 에이전트가 바뀌면 워크벤치 그룹 선택을 다시 초기화한다.
-    setSelectedWorkbenchTodoIds([])
-  }, [effectiveChatAgentId])
-
   const createMutation = useCreateAgentRole()
   const updateMutation = useUpdateAgentRole()
   const { data: pinnedMemoryItems = [], isPending: isPinnedMemoryPending } =
@@ -100,36 +75,9 @@ export const AgentListPage = () => {
   const workbenchTodos = useMemo(() => {
     if (effectiveChatAgentId === null) return []
 
-    const dayStart = new Date(todayBaseDate)
-    dayStart.setHours(0, 0, 0, 0)
-    const dayEnd = new Date(todayBaseDate)
-    dayEnd.setHours(23, 59, 59, 999)
-
-    const weekStart = new Date(dayStart)
-    const day = weekStart.getDay()
-    const diffToMonday = day === 0 ? 6 : day - 1
-    weekStart.setDate(weekStart.getDate() - diffToMonday)
-    const weekEnd = new Date(weekStart)
-    weekEnd.setDate(weekEnd.getDate() + 6)
-    weekEnd.setHours(23, 59, 59, 999)
-
     const toSafeDate = (value: string) => {
       const date = new Date(value)
       return Number.isNaN(date.getTime()) ? null : date
-    }
-
-    const isInRange = (targetDate: Date) => {
-      if (todoWorkbenchFilter === 'GROUP') {
-        // 그룹별 조회는 기간 필터를 타지 않는다.
-        return true
-      }
-      if (todoWorkbenchFilter === 'TODAY') {
-        return targetDate >= dayStart && targetDate <= dayEnd
-      }
-      if (todoWorkbenchFilter === 'THIS_WEEK') {
-        return targetDate >= weekStart && targetDate <= weekEnd
-      }
-      return true
     }
 
     return monthlySchedules
@@ -138,14 +86,47 @@ export const AgentListPage = () => {
         if (schedule.agentId !== effectiveChatAgentId) return false
         const parsed = toSafeDate(schedule.startAt)
         if (!parsed) return false
-        return isInRange(parsed)
+        return true
       })
       .sort((a, b) => {
         const aTime = new Date(a.startAt).getTime()
         const bTime = new Date(b.startAt).getTime()
         return aTime - bTime
       })
-  }, [effectiveChatAgentId, monthlySchedules, todayBaseDate, todoWorkbenchFilter])
+  }, [effectiveChatAgentId, monthlySchedules])
+
+  const effectiveChatAgent = useMemo(
+    () => agents.find((agent) => agent.id === effectiveChatAgentId) ?? null,
+    [agents, effectiveChatAgentId],
+  )
+
+  const boundAgentIds = useMemo(() => {
+    if (!effectiveChatAgent) return new Set<number>()
+    if (effectiveChatAgent.roleType === 'MAIN') {
+      const subAgentIds = agents
+        .filter((agent) => agent.roleType === 'SUB' && agent.mainAgentId === effectiveChatAgent.id)
+        .map((agent) => agent.id)
+      return new Set([effectiveChatAgent.id, ...subAgentIds])
+    }
+    return new Set([effectiveChatAgent.id])
+  }, [agents, effectiveChatAgent])
+
+  const recurringSchedules = useMemo(
+    () => monthlySchedules.filter((schedule) => schedule.type === 'RECURRING_OCCURRENCE'),
+    [monthlySchedules],
+  )
+  const calendarEvents = useMemo(
+    () => monthlySchedules.filter((schedule) => schedule.type === 'CALENDAR_EVENT'),
+    [monthlySchedules],
+  )
+  const boundTodos = useMemo(
+    () =>
+      monthlySchedules
+        .filter((schedule) => schedule.type === 'TODO')
+        .filter((schedule) => schedule.agentId !== null && boundAgentIds.has(schedule.agentId))
+        .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()),
+    [boundAgentIds, monthlySchedules],
+  )
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -164,31 +145,6 @@ export const AgentListPage = () => {
       setChatAgentId(agents[0]?.id ?? null)
     }
   }, [agents, chatAgentId])
-
-  const todoGroups = useMemo(() => {
-    const groupMap = new Map<
-      string,
-      { groupId: string | null; groupTitle: string | null; todos: ScheduleOccurrenceInterface[] }
-    >()
-    for (const todo of workbenchTodos) {
-      const groupId = todo.groupId ?? null
-      const groupKey = groupId === null ? 'null' : String(groupId)
-      const existing = groupMap.get(groupKey)
-      if (!existing) {
-        groupMap.set(groupKey, { groupId, groupTitle: todo.groupTitle ?? null, todos: [todo] })
-      } else {
-        if (existing.groupTitle === null && todo.groupTitle) existing.groupTitle = todo.groupTitle
-        existing.todos.push(todo)
-      }
-    }
-
-    return Array.from(groupMap.entries()).map(([groupKey, value]) => ({
-      groupKey,
-      groupId: value.groupId,
-      groupTitle: value.groupTitle,
-      todos: value.todos,
-    }))
-  }, [workbenchTodos])
 
   const buildEmptyDraftItem = (): TodoDraftItemInterface => {
     const now = new Date()
@@ -242,7 +198,6 @@ export const AgentListPage = () => {
   const openTodoDraftPanel = (message: ChatMessageInterface) => {
     const sourceItems = message.todo ?? []
     if (sourceItems.length === 0) return
-    const sourceIdsForReplace = negotiationSourceTodoIdsByMessageId[message.id] ?? []
     const panelType: TodoDraftPanelType =
       message.mode === 'TODO_NEGOTIATION' ? 'ADJUST' : 'REGISTER'
     setTodoDraftSourceMessageId(message.id)
@@ -254,13 +209,12 @@ export const AgentListPage = () => {
         sourceScheduleId:
           item.sourceScheduleId ??
           (panelType === 'ADJUST'
-            ? (sourceIdsForReplace[index] ??
-              findSourceScheduleIdForAdjustedDraft({
+            ? findSourceScheduleIdForAdjustedDraft({
                 title: item.title,
                 scheduledDate: item.scheduledDate,
                 startAt: item.startAt,
                 endAt: item.endAt,
-              }))
+              })
             : null),
         selected: true,
         title: item.title,
@@ -284,90 +238,6 @@ export const AgentListPage = () => {
     )
   }
 
-  const convertScheduleToDraftItem = (
-    schedule: ScheduleOccurrenceInterface,
-  ): TodoDraftItemInterface => {
-    const occurrenceDate = schedule.occurrenceDate
-    const fallbackStartAt = `${occurrenceDate}T20:00:00`
-    const fallbackEndAt = `${occurrenceDate}T20:30:00`
-    return {
-      draftId: `workbench-${schedule.id}`,
-      sourceScheduleId: schedule.id,
-      selected: true,
-      title: schedule.title,
-      description: schedule.description ?? '',
-      estimateMinutes: null,
-      priority: 'MEDIUM',
-      status: schedule.done ? 'DONE' : 'TODO',
-      scheduledDate: occurrenceDate,
-      startAt: schedule.startAt || fallbackStartAt,
-      endAt: schedule.endAt || fallbackEndAt,
-    }
-  }
-
-  const handleChangeSelectedWorkbenchTodoIds = (next: number[]) => {
-    setSelectedWorkbenchTodoIds(next)
-  }
-
-  const handleOpenWorkbenchSelectionInEditor = () => {
-    const selectedTodos = workbenchTodos.filter((todo) =>
-      selectedWorkbenchTodoIds.includes(todo.id),
-    )
-    if (selectedTodos.length === 0) {
-      toast.error('워크벤치에서 TODO를 먼저 선택하세요.')
-      return
-    }
-    setTodoDraftSourceMessageId('workbench')
-    setTodoDraftPanelType('ADJUST')
-    setTodoDraftItems(selectedTodos.map(convertScheduleToDraftItem))
-    setTodoDraftGroupTitle('조정안')
-  }
-
-  const handleRequestTodoNegotiation = () => {
-    if (selectedWorkbenchTodoIds.length === 0) {
-      toast.error('조정할 TODO를 먼저 선택하세요.')
-      return
-    }
-    if (effectiveChatAgentId === null || isChatSendPending) {
-      return
-    }
-
-    const selectedTodos = workbenchTodos.filter((todo) =>
-      selectedWorkbenchTodoIds.includes(todo.id),
-    )
-    if (selectedTodos.length === 0) {
-      toast.error('선택된 TODO를 찾지 못했습니다. 다시 선택해주세요.')
-      return
-    }
-
-    const trimmedRequestMessage = adjustRequestMessage.trim()
-    if (!trimmedRequestMessage) {
-      toast.error('조정 요청 문구를 입력해주세요.')
-      return
-    }
-
-    const negotiationTodos: NegotiationTodoRequestItemInterface[] = selectedTodos.map((todo) => ({
-      scheduleId: todo.id,
-      title: todo.title,
-      occurrenceDate: todo.occurrenceDate,
-      startAt: todo.startAt,
-      endAt: todo.endAt,
-    }))
-
-    const requestContent = trimmedRequestMessage
-
-    const sendNegotiation = negotiationSenderRef.current
-    if (!sendNegotiation) return
-
-    const didSend = sendNegotiation({
-      content: requestContent,
-      negotiationTodos,
-      preferredDeadlineDate: adjustRequestDeadlineDate || undefined,
-    })
-    if (!didSend) return
-    toast.success(`조정 요청을 보냈어요. (${selectedTodos.length}개)`)
-  }
-
   const registerTodoDraftItems = async () => {
     if (effectiveChatAgentId === null || isTodoRegistering) return
     const selectedItems = todoDraftItems.filter((item) => item.selected)
@@ -388,16 +258,15 @@ export const AgentListPage = () => {
 
     setIsTodoRegistering(true)
     try {
-      // REGISTER/ADJUST 모두: 이번 응답(요청)에서 생성되는 TODO 묶음을 1개의 groupId로 고정한다.
+      // REGISTER는 새 그룹 생성, ADJUST는 원본 그룹 유지가 기본이다.
       const nextGroupId =
         typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(16).slice(2)}`
       const normalizedGroupTitle = todoDraftGroupTitle.trim() || '그룹'
 
-      const requestItems = validItems.map((item) => ({
-        draftId: item.draftId,
-        sourceScheduleId:
+      const requestItems = validItems.map((item) => {
+        const resolvedSourceScheduleId =
           item.sourceScheduleId ??
           (todoDraftPanelType === 'ADJUST'
             ? findSourceScheduleIdForAdjustedDraft({
@@ -406,19 +275,36 @@ export const AgentListPage = () => {
                 startAt: item.startAt,
                 endAt: item.endAt,
               })
-            : null),
-        body: {
-          type: 'TODO' as const,
-          title: item.title.trim(),
-          description: item.description.trim() || undefined,
-          occurrenceDate: item.scheduledDate,
-          startAt: item.startAt,
-          endAt: item.endAt,
-          agentId: effectiveChatAgentId,
-          groupId: nextGroupId ?? undefined,
-          groupTitle: normalizedGroupTitle,
-        },
-      }))
+            : null)
+        const sourceSchedule =
+          todoDraftPanelType === 'ADJUST' && resolvedSourceScheduleId
+            ? (monthlySchedules.find(
+                (schedule) => schedule.type === 'TODO' && schedule.id === resolvedSourceScheduleId,
+              ) ?? null)
+            : null
+
+        return {
+          draftId: item.draftId,
+          sourceScheduleId: resolvedSourceScheduleId,
+          body: {
+            type: 'TODO' as const,
+            title: item.title.trim(),
+            description: item.description.trim() || undefined,
+            occurrenceDate: item.scheduledDate,
+            startAt: item.startAt,
+            endAt: item.endAt,
+            agentId: effectiveChatAgentId,
+            groupId:
+              todoDraftPanelType === 'ADJUST'
+                ? (sourceSchedule?.groupId ?? nextGroupId ?? undefined)
+                : (nextGroupId ?? undefined),
+            groupTitle:
+              todoDraftPanelType === 'ADJUST'
+                ? (sourceSchedule?.groupTitle ?? normalizedGroupTitle)
+                : normalizedGroupTitle,
+          },
+        }
+      })
 
       const createTargets = requestItems
 
@@ -473,18 +359,6 @@ export const AgentListPage = () => {
               ? `${successCount}개의 조정 TODO를 등록했습니다.`
               : `${successCount}개의 투두를 캘린더에 등록했습니다.`,
           )
-        }
-        if (sourceIdsUsedForDelete.size > 0) {
-          setNegotiationSourceTodoIdsByMessageId((previous) => {
-            const nextMap: Record<string, number[]> = {}
-            for (const [messageId, sourceIds] of Object.entries(previous)) {
-              const remainingIds = sourceIds.filter((id) => !sourceIdsUsedForDelete.has(id))
-              if (remainingIds.length > 0) {
-                nextMap[messageId] = remainingIds
-              }
-            }
-            return nextMap
-          })
         }
         setTodoDraftItems((previous) => previous.filter((item) => !item.selected))
       } else if (successCount > 0) {
@@ -640,36 +514,16 @@ export const AgentListPage = () => {
               chatAgentName={agents.find((agent) => agent.id === effectiveChatAgentId)?.name}
               onOpenSettings={handleOpenChatSettings}
               onOpenTodoDraftPanel={openTodoDraftPanel}
-              onNegotiationSent={(assistantMessageId, sourceTodoIds) => {
-                if (!assistantMessageId || sourceTodoIds.length === 0) return
-                setNegotiationSourceTodoIdsByMessageId((previous) => ({
-                  ...previous,
-                  [assistantMessageId]: sourceTodoIds,
-                }))
-              }}
-              onBindNegotiationSender={(sender) => {
-                negotiationSenderRef.current = sender
-              }}
-              onSendPendingChange={setIsChatSendPending}
             />
 
             <div className="w-md shrink-0 space-y-3">
-              <TodoWorkbenchPanel
-                todoWorkbenchFilter={todoWorkbenchFilter}
-                selectedWorkbenchTodoIds={selectedWorkbenchTodoIds}
-                todoGroups={todoGroups}
-                isMonthlySchedulesPending={isMonthlySchedulesPending}
-                adjustRequestMessage={adjustRequestMessage}
-                adjustRequestDeadlineDate={adjustRequestDeadlineDate}
-                isSendPending={isChatSendPending}
-                onChangeFilter={setTodoWorkbenchFilter}
-                onChangeSelectedTodoIds={handleChangeSelectedWorkbenchTodoIds}
-                onChangeAdjustRequestMessage={setAdjustRequestMessage}
-                onChangeAdjustRequestDeadlineDate={setAdjustRequestDeadlineDate}
-                onOpenSelectionInEditor={handleOpenWorkbenchSelectionInEditor}
-                onSendAdjustRequest={handleRequestTodoNegotiation}
+              <AgentBoundTodoPanel
+                roleType={effectiveChatAgent?.roleType ?? 'SUB'}
+                fixedSchedules={recurringSchedules}
+                calendarEvents={calendarEvents}
+                boundTodos={boundTodos}
+                isPending={isMonthlySchedulesPending}
               />
-
               {todoDraftItems.length > 0 ? (
                 todoDraftPanelType === 'ADJUST' ? (
                   <TodoAdjustPanel

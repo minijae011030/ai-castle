@@ -1,5 +1,5 @@
 import { BookmarkPlus, ImagePlusIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownMessage } from '@/components/chat/markdown-message'
 import { TodoMessage } from '@/components/chat/todo-message'
 import { Button } from '@/components/ui/button'
@@ -9,11 +9,7 @@ import { useAgentChatStream } from '@/hooks/useAgentChatStream'
 import { useCreateAgentPinnedMemory } from '@/hooks/queries/agent-query'
 import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
 import { cn } from '@/lib/utils'
-import type {
-  ChatMessageInterface,
-  ImageDraftItemInterface,
-  NegotiationTodoRequestItemInterface,
-} from '@/types/chat.type'
+import type { ChatMessageInterface, ImageDraftItemInterface } from '@/types/chat.type'
 import { toast } from 'sonner'
 
 interface AgentChatBoxPropsInterface {
@@ -21,14 +17,6 @@ interface AgentChatBoxPropsInterface {
   chatAgentName?: string
   onOpenSettings: () => void
   onOpenTodoDraftPanel: (message: ChatMessageInterface) => void
-  onNegotiationSent?: (assistantMessageId: string, sourceTodoIds: number[]) => void
-  onBindNegotiationSender?: (
-    sender: (payload: {
-      content: string
-      negotiationTodos: NegotiationTodoRequestItemInterface[]
-      preferredDeadlineDate?: string
-    }) => boolean,
-  ) => void
   onSendPendingChange?: (isPending: boolean) => void
 }
 
@@ -37,8 +25,6 @@ export const AgentChatBox = ({
   chatAgentName,
   onOpenSettings,
   onOpenTodoDraftPanel,
-  onNegotiationSent,
-  onBindNegotiationSender,
   onSendPendingChange,
 }: AgentChatBoxPropsInterface) => {
   const [chatInput, setChatInput] = useState('')
@@ -71,15 +57,8 @@ export const AgentChatBox = ({
       }
       lastSentContentRef.current = null
     },
-    onSuccess: (data, variables) => {
+    onSuccess: () => {
       lastSentContentRef.current = null
-      if (variables.mode !== 'TODO_NEGOTIATION') return
-      const sourceTodoIds =
-        variables.negotiationTodos
-          ?.map((todo) => todo.scheduleId)
-          .filter((id) => typeof id === 'number') ?? []
-      if (!data?.id || sourceTodoIds.length === 0) return
-      onNegotiationSent?.(data.id, sourceTodoIds)
     },
   })
 
@@ -196,27 +175,12 @@ export const AgentChatBox = ({
 
   const sendChat = async (payload: {
     content: string
-    mode?: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
-    negotiationTodos?: NegotiationTodoRequestItemInterface[]
-    preferredDeadlineDate?: string
+    mode?: 'CHAT' | 'TODO'
   }): Promise<boolean> => {
     if (agentId === null) return false
     const content = payload.content.trim()
     if (!content || sendChatMutation.isPending || sendLockRef.current || isStreamingReply)
       return false
-
-    // 협상 모드는 기존 HTTP 계약을 그대로 사용한다.
-    if (payload.mode === 'TODO_NEGOTIATION') {
-      sendLockRef.current = true
-      lastSentContentRef.current = content
-      sendChatMutation.mutate({
-        content,
-        mode: payload.mode,
-        negotiationTodos: payload.negotiationTodos,
-        preferredDeadlineDate: payload.preferredDeadlineDate,
-      })
-      return true
-    }
 
     // 현재 /agents 스트림 전송은 텍스트만 허용한다.
     if (chatImageDrafts.length > 0) {
@@ -240,34 +204,6 @@ export const AgentChatBox = ({
     sendLockRef.current = false
     return ok
   }
-
-  const sendNegotiationRequest = useCallback(
-    (payload: {
-      content: string
-      negotiationTodos: NegotiationTodoRequestItemInterface[]
-      preferredDeadlineDate?: string
-    }): boolean => {
-      if (agentId === null) return false
-      const content = payload.content.trim()
-      if (!content || sendChatMutation.isPending || sendLockRef.current || isStreamingReply)
-        return false
-      sendLockRef.current = true
-      lastSentContentRef.current = content
-      sendChatMutation.mutate({
-        content,
-        mode: 'TODO_NEGOTIATION',
-        negotiationTodos: payload.negotiationTodos,
-        preferredDeadlineDate: payload.preferredDeadlineDate,
-      })
-      return true
-    },
-    [agentId, isStreamingReply, sendChatMutation],
-  )
-
-  useEffect(() => {
-    if (!onBindNegotiationSender) return
-    onBindNegotiationSender(sendNegotiationRequest)
-  }, [onBindNegotiationSender, sendNegotiationRequest])
 
   const handleSendChat = () => {
     void sendChat({ content: chatInput })

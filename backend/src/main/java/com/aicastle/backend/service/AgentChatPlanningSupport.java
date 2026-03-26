@@ -38,6 +38,7 @@ public class AgentChatPlanningSupport {
           "(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2})\\s*[~\\-]\\s*(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2})");
   private static final Pattern SINGLE_DATE_PATTERN =
       Pattern.compile("(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2})");
+  private static final Pattern DAY_ONLY_PATTERN = Pattern.compile("(\\d{1,2})일");
   private static final long EXAM_INFERENCE_CACHE_TTL_MS = 15_000L;
 
   private final AgentPlanningToolService agentPlanningToolService;
@@ -108,8 +109,26 @@ public class AgentChatPlanningSupport {
         targetTodoIds.add(item.scheduleId());
       }
     }
+    List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> todosInRange =
+        agentPlanningToolService.getTodos(userId, startDate, endDate, false);
     if (targetTodoIds.isEmpty()) {
-      agentPlanningToolService.getTodos(userId, startDate, endDate, false);
+      targetTodoIds = inferNegotiationTargetTodoIds(userMessage, todosInRange, startDate);
+      log.info("🐰 [NEGOTIATION_TARGET] inferredTargetTodoIds={}", targetTodoIds);
+    }
+    if (targetTodoIds.isEmpty()) {
+      Map<String, Object> payload =
+          Map.of(
+              "text",
+              "조정할 TODO를 특정하지 못했어요. 제목(예: 기출문제 오답 암기)이나 날짜를 조금 더 구체적으로 알려주세요.",
+              "groupTitle",
+              "조정 대상 확인 필요",
+              "todo",
+              List.of());
+      try {
+        return objectMapper.writeValueAsString(payload);
+      } catch (Exception e) {
+        throw new IllegalStateException("조정 대상 안내 메시지 직렬화에 실패했습니다.");
+      }
     }
 
     Integer maxShiftDays = 7;
@@ -158,9 +177,7 @@ public class AgentChatPlanningSupport {
     }
 
     String groupTitle =
-        startDate.equals(endDate)
-            ? "재조정 제안 (" + startDate + ")"
-            : "재조정 제안 (" + startDate + " ~ " + endDate + ")";
+        resolveNegotiationGroupTitle(todosInRange, targetTodoIds, startDate, endDate);
 
     Map<String, Object> payload =
         Map.of(
@@ -477,6 +494,213 @@ public class AgentChatPlanningSupport {
       if (note != null) notes.add(note);
     }
     return notes;
+  }
+
+  private List<Long> inferNegotiationTargetTodoIds(
+      String userMessage,
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> todos,
+      LocalDate fallbackMonthDate) {
+    String safeMessage = userMessage == null ? "" : userMessage;
+    List<Long> aiTargetIds =
+        inferNegotiationTargetTodoIdsByAi(safeMessage, todos, fallbackMonthDate);
+    if (!aiTargetIds.isEmpty()) {
+      log.info("🐰 [NEGOTIATION_TARGET] selectedBy=ai targetTodoIds={}", aiTargetIds);
+      return aiTargetIds;
+    }
+    List<Long> ruleTargetIds =
+        inferNegotiationTargetTodoIdsByRule(safeMessage, todos, fallbackMonthDate);
+    log.info("🐰 [NEGOTIATION_TARGET] selectedBy=rule targetTodoIds={}", ruleTargetIds);
+    return ruleTargetIds;
+  }
+
+  private List<Long> inferNegotiationTargetTodoIdsByRule(
+      String userMessage,
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> todos,
+      LocalDate fallbackMonthDate) {
+    if (todos == null || todos.isEmpty()) return List.of();
+    String safeMessage = userMessage == null ? "" : userMessage.toLowerCase();
+    LocalDate hintedDate = inferDayHintDate(safeMessage, fallbackMonthDate);
+
+    List<String> tokens = new ArrayList<>();
+    for (String raw : safeMessage.split("[\\s,./()]+")) {
+      String token = raw.trim();
+      if (token.length() < 2) continue;
+      if (token.equals("일정")
+          || token.equals("조정")
+          || token.equals("해주세요")
+          || token.equals("미뤄")
+          || token.equals("미뤄주세요")
+          || token.equals("선생님")) continue;
+      tokens.add(token);
+    }
+
+    List<Long> matchedIds = new ArrayList<>();
+    long bestTodoId = -1L;
+    int bestScore = 0;
+    for (com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem todo : todos) {
+      if (todo == null || todo.id() == null) continue;
+      if (hintedDate != null && todo.date() != null && !hintedDate.equals(todo.date())) continue;
+      String title = todo.title() == null ? "" : todo.title().toLowerCase();
+      String description = todo.description() == null ? "" : todo.description().toLowerCase();
+      String combined = title + " " + description;
+      int score = 0;
+      for (String token : tokens) {
+        if (combined.contains(token)) {
+          score += 1;
+          if (token.length() >= 3) score += 1;
+          if (title.contains(token)) score += 1;
+        }
+      }
+      if (score > 0) {
+        matchedIds.add(todo.id());
+        if (score > bestScore) {
+          bestScore = score;
+          bestTodoId = todo.id();
+        }
+      }
+    }
+    if (isSingleTodoAdjustmentRequest(safeMessage) && bestTodoId > 0L) {
+      return List.of(bestTodoId);
+    }
+    return matchedIds;
+  }
+
+  private List<Long> inferNegotiationTargetTodoIdsByAi(
+      String userMessage,
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> todos,
+      LocalDate fallbackMonthDate) {
+    if (todos == null || todos.isEmpty()) return List.of();
+    try {
+      LocalDate hintedDate =
+          inferDayHintDate(userMessage == null ? "" : userMessage.toLowerCase(), fallbackMonthDate);
+      List<Message> messages = new ArrayList<>();
+      messages.add(
+          new Message(
+              "system",
+              """
+              너는 일정 조정 타깃 추론 에이전트다.
+              사용자의 자연어 조정 요청에서 실제로 수정할 TODO id를 추론하라.
+              반드시 JSON만 반환하라.
+
+              출력 스키마:
+              {
+                "targetTodoIds": [1,2],
+                "confidence": 0.0,
+                "reason": "string"
+              }
+
+              규칙:
+              - 후보는 제공된 todos의 id 안에서만 선택한다.
+              - 단일 조정 표현(예: "1시간만 미뤄", "하나만")이면 가능한 1개만 선택한다.
+              - 모호하면 빈 배열을 반환한다.
+              - 마크다운/코드블록 금지.
+              """));
+      java.util.LinkedHashMap<String, Object> aiInput = new java.util.LinkedHashMap<>();
+      aiInput.put("userMessage", userMessage == null ? "" : userMessage);
+      aiInput.put("hintedDate", hintedDate == null ? null : hintedDate.toString());
+      aiInput.put(
+          "singleAdjustmentHint",
+          isSingleTodoAdjustmentRequest(userMessage == null ? "" : userMessage.toLowerCase()));
+      aiInput.put("todos", todos);
+      messages.add(new Message("user", objectMapper.writeValueAsString(aiInput)));
+      String raw = openAiClient.createChatCompletionWithMessages(messages);
+      String json = extractJsonObject(raw);
+      if (json == null) return List.of();
+      JsonNode root = objectMapper.readTree(json);
+      double confidence = root.path("confidence").asDouble(0.0);
+      String reason = root.path("reason").asText("");
+      JsonNode idsNode = root.path("targetTodoIds");
+      if (!idsNode.isArray() || idsNode.isEmpty()) {
+        log.info(
+            "🐰 [NEGOTIATION_TARGET][AI] empty ids confidence={}, reason={}", confidence, reason);
+        return List.of();
+      }
+
+      List<Long> todoIdsFromContext = new ArrayList<>();
+      for (com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem todo : todos) {
+        if (todo == null || todo.id() == null) continue;
+        todoIdsFromContext.add(todo.id());
+      }
+      List<Long> filteredIds = new ArrayList<>();
+      for (JsonNode node : idsNode) {
+        if (!node.canConvertToLong()) continue;
+        long id = node.asLong();
+        if (todoIdsFromContext.contains(id)) filteredIds.add(id);
+      }
+      if (filteredIds.isEmpty()) return List.of();
+      if (confidence < 0.55d) {
+        log.info(
+            "🐰 [NEGOTIATION_TARGET][AI] low confidence={}, reason={}, ids={}",
+            confidence,
+            reason,
+            filteredIds);
+        return List.of();
+      }
+      if (isSingleTodoAdjustmentRequest(userMessage == null ? "" : userMessage.toLowerCase())) {
+        return List.of(filteredIds.get(0));
+      }
+      return filteredIds;
+    } catch (Exception e) {
+      log.warn(
+          "🐰 [NEGOTIATION_TARGET][AI] inference failed, fallback rule. message={}",
+          e.getMessage());
+      return List.of();
+    }
+  }
+
+  private LocalDate inferDayHintDate(String userMessageLower, LocalDate fallbackMonthDate) {
+    if (userMessageLower == null || userMessageLower.isBlank()) return null;
+    Matcher matcher = DAY_ONLY_PATTERN.matcher(userMessageLower);
+    if (!matcher.find()) return null;
+    try {
+      int dayOfMonth = Integer.parseInt(matcher.group(1));
+      if (dayOfMonth <= 0 || dayOfMonth > 31) return null;
+      LocalDate base =
+          fallbackMonthDate == null ? LocalDate.now(PLANNER_ZONE_ID) : fallbackMonthDate;
+      return LocalDate.of(base.getYear(), base.getMonthValue(), dayOfMonth);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private boolean isSingleTodoAdjustmentRequest(String userMessageLower) {
+    if (userMessageLower == null || userMessageLower.isBlank()) return false;
+    boolean hasSingleShiftHint =
+        userMessageLower.contains("1시간만")
+            || userMessageLower.contains("한시간만")
+            || userMessageLower.contains("30분만")
+            || userMessageLower.contains("만 미뤄")
+            || userMessageLower.contains("만 늦춰");
+    boolean hasPluralHint =
+        userMessageLower.contains("여러")
+            || userMessageLower.contains("전체")
+            || userMessageLower.contains("다 ")
+            || userMessageLower.contains("모두")
+            || userMessageLower.contains("전부");
+    return hasSingleShiftHint && !hasPluralHint;
+  }
+
+  private String resolveNegotiationGroupTitle(
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> todosInRange,
+      List<Long> targetTodoIds,
+      LocalDate startDate,
+      LocalDate endDate) {
+    if (todosInRange != null && targetTodoIds != null && !targetTodoIds.isEmpty()) {
+      for (Long targetId : targetTodoIds) {
+        if (targetId == null) continue;
+        for (com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem todo : todosInRange) {
+          if (todo == null || todo.id() == null) continue;
+          if (!targetId.equals(todo.id())) continue;
+          String existingGroupTitle = todo.groupTitle();
+          if (existingGroupTitle != null && !existingGroupTitle.trim().isBlank()) {
+            return existingGroupTitle.trim();
+          }
+        }
+      }
+    }
+    return startDate.equals(endDate)
+        ? "재조정 제안 (" + startDate + ")"
+        : "재조정 제안 (" + startDate + " ~ " + endDate + ")";
   }
 
   public ChatMode routeChatMode(
