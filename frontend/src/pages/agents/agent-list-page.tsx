@@ -12,7 +12,11 @@ import {
   useUpdateAgentPinnedMemory,
   useUpdateAgentRole,
 } from '@/hooks/queries/agent-query'
-import { useSchedulesByMonth } from '@/hooks/queries/schedule-query'
+import {
+  useSchedulesByMonth,
+  useToggleRecurringScheduleDone,
+  useToggleScheduleDone,
+} from '@/hooks/queries/schedule-query'
 import { createSchedule, deleteSchedule } from '@/services/schedule-service'
 import type {
   AgentRoleDataInterface,
@@ -71,6 +75,8 @@ export const AgentListPage = () => {
     useAgentPinnedMemoryList(selectedAgentId ?? 0)
   const deletePinnedMemoryMutation = useDeleteAgentPinnedMemory(selectedAgentId ?? 0)
   const updatePinnedMemoryMutation = useUpdateAgentPinnedMemory(selectedAgentId ?? 0)
+  const toggleScheduleDoneMutation = useToggleScheduleDone()
+  const toggleRecurringDoneMutation = useToggleRecurringScheduleDone()
 
   const workbenchTodos = useMemo(() => {
     if (effectiveChatAgentId === null) return []
@@ -95,22 +101,6 @@ export const AgentListPage = () => {
       })
   }, [effectiveChatAgentId, monthlySchedules])
 
-  const effectiveChatAgent = useMemo(
-    () => agents.find((agent) => agent.id === effectiveChatAgentId) ?? null,
-    [agents, effectiveChatAgentId],
-  )
-
-  const boundAgentIds = useMemo(() => {
-    if (!effectiveChatAgent) return new Set<number>()
-    if (effectiveChatAgent.roleType === 'MAIN') {
-      const subAgentIds = agents
-        .filter((agent) => agent.roleType === 'SUB' && agent.mainAgentId === effectiveChatAgent.id)
-        .map((agent) => agent.id)
-      return new Set([effectiveChatAgent.id, ...subAgentIds])
-    }
-    return new Set([effectiveChatAgent.id])
-  }, [agents, effectiveChatAgent])
-
   const recurringSchedules = useMemo(
     () => monthlySchedules.filter((schedule) => schedule.type === 'RECURRING_OCCURRENCE'),
     [monthlySchedules],
@@ -123,9 +113,8 @@ export const AgentListPage = () => {
     () =>
       monthlySchedules
         .filter((schedule) => schedule.type === 'TODO')
-        .filter((schedule) => schedule.agentId !== null && boundAgentIds.has(schedule.agentId))
         .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()),
-    [boundAgentIds, monthlySchedules],
+    [monthlySchedules],
   )
 
   useEffect(() => {
@@ -518,11 +507,23 @@ export const AgentListPage = () => {
 
             <div className="w-md shrink-0 space-y-3">
               <AgentBoundTodoPanel
-                roleType={effectiveChatAgent?.roleType ?? 'SUB'}
                 fixedSchedules={recurringSchedules}
                 calendarEvents={calendarEvents}
                 boundTodos={boundTodos}
                 isPending={isMonthlySchedulesPending}
+                onToggleDone={(schedule) => {
+                  const isRecurring =
+                    schedule.type === 'RECURRING_OCCURRENCE' &&
+                    schedule.recurringTemplateId !== null
+                  if (isRecurring && schedule.recurringTemplateId) {
+                    toggleRecurringDoneMutation.mutate({
+                      templateId: schedule.recurringTemplateId,
+                      date: schedule.occurrenceDate,
+                    })
+                    return
+                  }
+                  toggleScheduleDoneMutation.mutate({ id: schedule.id })
+                }}
               />
               {todoDraftItems.length > 0 ? (
                 todoDraftPanelType === 'ADJUST' ? (

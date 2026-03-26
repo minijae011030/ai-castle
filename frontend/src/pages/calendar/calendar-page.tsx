@@ -10,13 +10,13 @@ import {
 } from '@/hooks/queries/schedule-query'
 import { format } from 'date-fns'
 import { CalendarDayCell } from '@/components/calendar/calendar-day-cell'
+import { ScheduleDayListPanel } from '@/components/calendar/schedule-day-list-panel'
 import { ScheduleCreateDialog } from '@/components/calendar/schedule-create-dialog'
 import type { ScheduleOccurrenceInterface } from '@/types/schedule.type'
 import { Badge } from '@/components/ui/badge'
 import { useRecurringScheduleTemplateList } from '@/hooks/queries/recurring-schedule-template-query'
 import type { RecurringScheduleTemplateInterface } from '@/types/recurring-schedule-template.type'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import { useActiveAgentList } from '@/hooks/queries/agent-query'
 import type { ChatMessageInterface } from '@/types/chat.type'
 import { TodoMessage } from '@/components/chat/todo-message'
@@ -222,92 +222,27 @@ export const CalendarPage = () => {
             }
           />
         </div>
-        <div className="rounded-md border bg-card/30 p-2">
-          {isPending && <p className="px-1 py-1 text-xs text-muted-foreground">불러오는 중...</p>}
-          {!isPending && schedulesForSelectedDay.length === 0 && (
-            <p className="px-1 py-1 text-xs text-muted-foreground">
-              이 날짜에는 스케줄이 없습니다.
-            </p>
-          )}
-          {!isPending && schedulesForSelectedDay.length > 0 && (
-            <div className="max-h-[280px] space-y-1 overflow-y-auto pr-1 text-xs">
-              {schedulesForSelectedDay.map((s) => {
-                const isDone = s.done
-                const isRecurring =
-                  s.type === 'RECURRING_OCCURRENCE' && s.recurringTemplateId !== null
-                const itemKey = `${s.type}-${s.recurringTemplateId ?? s.id}`
-                const isActive = detailTargetKey === itemKey
-                return (
-                  <div
-                    key={itemKey}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setDetailTargetKey(itemKey)}
-                    onClickCapture={() => setTodoAgentResult(null)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setDetailTargetKey(itemKey)
-                      }
-                    }}
-                    className={cn(
-                      'flex w-full items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-left',
-                      'cursor-pointer hover:bg-accent/60',
-                      isActive && 'border-primary/40 bg-accent/30',
-                    )}
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <button
-                        type="button"
-                        aria-label="완료 토글"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (isRecurring && s.recurringTemplateId) {
-                            toggleRecurringDoneMutation.mutate({
-                              templateId: s.recurringTemplateId,
-                              date: s.occurrenceDate,
-                            })
-                          } else {
-                            toggleScheduleDoneMutation.mutate({ id: s.id })
-                          }
-                        }}
-                        className={cn(
-                          'inline-flex size-5 items-center justify-center rounded-full border text-[10px]',
-                          isDone
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-background text-muted-foreground hover:bg-muted',
-                        )}
-                      >
-                        {isDone ? '✓' : ''}
-                      </button>
-                      <div className="min-w-0 flex-1 space-y-0.5">
-                        <p
-                          className={cn(
-                            'truncate font-medium',
-                            isDone ? 'text-muted-foreground line-through' : 'text-foreground',
-                          )}
-                        >
-                          {s.title}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {format(new Date(s.startAt), 'HH:mm')} ~{' '}
-                          {format(new Date(s.endAt), 'HH:mm')}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
-                      {s.type === 'RECURRING_OCCURRENCE'
-                        ? '정기'
-                        : s.type === 'CALENDAR_EVENT'
-                          ? '일정'
-                          : '할 일'}
-                    </Badge>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        <ScheduleDayListPanel
+          schedules={schedulesForSelectedDay}
+          isPending={isPending}
+          selectedKey={detailTargetKey}
+          onSelect={(key) => {
+            setDetailTargetKey(key)
+            setTodoAgentResult(null)
+          }}
+          onToggleDone={(schedule) => {
+            const isRecurring =
+              schedule.type === 'RECURRING_OCCURRENCE' && schedule.recurringTemplateId !== null
+            if (isRecurring && schedule.recurringTemplateId) {
+              toggleRecurringDoneMutation.mutate({
+                templateId: schedule.recurringTemplateId,
+                date: schedule.occurrenceDate,
+              })
+              return
+            }
+            toggleScheduleDoneMutation.mutate({ id: schedule.id })
+          }}
+        />
         {detailTarget && (
           <div className="mt-2 rounded-md border bg-card p-3 text-xs">
             <div className="flex items-start justify-between gap-2">
