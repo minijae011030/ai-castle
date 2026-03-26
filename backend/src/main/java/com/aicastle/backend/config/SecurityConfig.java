@@ -1,6 +1,7 @@
 package com.aicastle.backend.config;
 
 import com.aicastle.backend.service.JwtService;
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -28,9 +29,29 @@ public class SecurityConfig {
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
-            auth -> auth.requestMatchers(PERMIT_ALL_PATHS).permitAll().anyRequest().authenticated())
+            auth ->
+                auth.dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR)
+                    .permitAll()
+                    .requestMatchers(PERMIT_ALL_PATHS)
+                    .permitAll()
+                    .anyRequest()
+                    .authenticated())
         .exceptionHandling(
-            ex -> ex.authenticationEntryPoint(new JsonAuthenticationEntryPoint("인증이 필요합니다.")))
+            ex ->
+                ex.authenticationEntryPoint(new JsonAuthenticationEntryPoint("인증이 필요합니다."))
+                    .accessDeniedHandler(
+                        (request, response, accessDeniedException) -> {
+                          if (response.isCommitted()) {
+                            return;
+                          }
+                          response.setStatus(403);
+                          response.setContentType("application/json;charset=UTF-8");
+                          response
+                              .getOutputStream()
+                              .write(
+                                  "{\"status\":403,\"message\":\"접근 권한이 없습니다.\",\"data\":null}"
+                                      .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        }))
         .addFilterBefore(
             new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class)
         .build();

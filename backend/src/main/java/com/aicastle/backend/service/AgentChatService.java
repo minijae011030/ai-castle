@@ -56,6 +56,7 @@ public class AgentChatService {
   private final UserAccountRepository userAccountRepository;
   private final ChatMessageRepository chatMessageRepository;
   private final AgentPinnedMemoryRepository agentPinnedMemoryRepository;
+  private final AgentChatPlanningSupport agentChatPlanningSupport;
   private final OpenAiClient openAiClient;
   private final ObjectMapper objectMapper;
 
@@ -64,12 +65,14 @@ public class AgentChatService {
       UserAccountRepository userAccountRepository,
       ChatMessageRepository chatMessageRepository,
       AgentPinnedMemoryRepository agentPinnedMemoryRepository,
+      AgentChatPlanningSupport agentChatPlanningSupport,
       OpenAiClient openAiClient,
       ObjectMapper objectMapper) {
     this.agentRoleRepository = agentRoleRepository;
     this.userAccountRepository = userAccountRepository;
     this.chatMessageRepository = chatMessageRepository;
     this.agentPinnedMemoryRepository = agentPinnedMemoryRepository;
+    this.agentChatPlanningSupport = agentChatPlanningSupport;
     this.openAiClient = openAiClient;
     this.objectMapper = objectMapper;
   }
@@ -231,59 +234,87 @@ public class AgentChatService {
             + modePrompt;
 
     String reply;
+    List<String> progressNotes = null;
     try {
-      List<Message> messages = new ArrayList<>();
-      // 시스템 프롬프트는 한 번만 넣고, 이후는 히스토리 + 현재 유저 메시지로 컨텍스트를 구성한다.
-      messages.add(new Message("system", systemPrompt));
+      if (mode == ChatMode.TODO_NEGOTIATION) {
+        progressNotes =
+            List.of("요청한 날짜 범위를 확인했어요.", "고정 일정과 기존 TODO 충돌을 분석했어요.", "재배치 초안을 만들고 검증했어요.");
+        reply =
+            agentChatPlanningSupport.runNegotiationToolLoop(
+                userId, content, negotiationTodos, preferredDeadlineDate);
+      } else if (mode == ChatMode.TODO) {
+        progressNotes =
+            List.of(
+                "요청한 날짜 범위를 확인했어요.",
+                "해당 기간의 고정 일정을 확인했어요.",
+                "해당 기간의 기존 TODO를 확인했어요.",
+                "에이전트 담당 TODO의 연속성을 확인했어요.",
+                "사용자 시간 제약(dayStart/dayEnd)을 확인했어요.",
+                "우선순위와 시간 충돌을 정리했어요.",
+                "실행 가능한 추천안을 만들었어요.");
+        reply = agentChatPlanningSupport.runTodoToolLoop(userId, agentId, content, systemPrompt);
+      } else {
+        List<Message> messages = new ArrayList<>();
+        // 시스템 프롬프트는 한 번만 넣고, 이후는 히스토리 + 현재 유저 메시지로 컨텍스트를 구성한다.
+        messages.add(new Message("system", systemPrompt));
 
-      // 고정 메모리(최대 10개)를 항상 주입한다. (사용자 직접 관리, FIFO 금지)
-      var pinnedMemories =
-          agentPinnedMemoryRepository.findByUserAccount_IdAndAgentRole_IdOrderByCreatedAtAsc(
-              userId, agentId);
-      if (!pinnedMemories.isEmpty()) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[고정 메모리]\n");
-        for (int i = 0; i < pinnedMemories.size(); i++) {
-          String mem = pinnedMemories.get(i).getContent();
-          if (mem == null || mem.isBlank()) continue;
-          sb.append("- ").append(mem.trim()).append("\n");
+        // 고정 메모리(최대 10개)를 항상 주입한다. (사용자 직접 관리, FIFO 금지)
+        var pinnedMemories =
+            agentPinnedMemoryRepository.findByUserAccount_IdAndAgentRole_IdOrderByCreatedAtAsc(
+                userId, agentId);
+        if (!pinnedMemories.isEmpty()) {
+          StringBuilder sb = new StringBuilder();
+          sb.append("[고정 메모리]\n");
+          for (int i = 0; i < pinnedMemories.size(); i++) {
+            String mem = pinnedMemories.get(i).getContent();
+            if (mem == null || mem.isBlank()) continue;
+            sb.append("- ").append(mem.trim()).append("\n");
+          }
+          messages.add(new Message("system", sb.toString().trim()));
         }
-        messages.add(new Message("system", sb.toString().trim()));
-      }
 
-      // 최근 대화 슬라이딩 윈도우(최근 N개) 주입
-      List<ChatMessage> recentAsc = new ArrayList<>(recentDesc);
-      Collections.reverse(recentAsc); // 오래된 -> 최신
-      for (ChatMessage m : recentAsc) {
-        if (m == null || m.getContent() == null || m.getContent().isBlank()) {
-          continue;
+        // 최근 대화 슬라이딩 윈도우(최근 N개) 주입
+        List<ChatMessage> recentAsc = new ArrayList<>(recentDesc);
+        Collections.reverse(recentAsc); // 오래된 -> 최신
+        for (ChatMessage m : recentAsc) {
+          if (m == null || m.getContent() == null || m.getContent().isBlank()) {
+            continue;
+          }
+          String role = m.getRole() == ChatMessage.Role.USER ? "user" : "assistant";
+          messages.add(new Message(role, m.getContent()));
         }
-        String role = m.getRole() == ChatMessage.Role.USER ? "user" : "assistant";
-        messages.add(new Message(role, m.getContent()));
+
+        String normalizedContent =
+            mode == ChatMode.TODO_NEGOTIATION
+                ? agentChatPlanningSupport.buildNegotiationContext(
+                    content, negotiationTodos, preferredDeadlineDate)
+                : content;
+
+        Object userMessageContent = buildUserMessageContent(normalizedContent, imageUrls);
+
+        messages.add(new Message("user", userMessageContent));
+
+        reply =
+            mode == ChatMode.TODO || mode == ChatMode.TODO_NEGOTIATION
+                ? openAiClient.createTodoJsonWithMessages(messages)
+                : (!imageUrls.isEmpty()
+                    ? openAiClient.createVisionResponseWithMessages(messages)
+                    : openAiClient.createChatCompletionWithMessages(messages));
       }
-
-      String normalizedContent =
-          mode == ChatMode.TODO_NEGOTIATION
-              ? buildNegotiationContext(content, negotiationTodos, preferredDeadlineDate)
-              : content;
-
-      Object userMessageContent = buildUserMessageContent(normalizedContent, imageUrls);
-
-      messages.add(new Message("user", userMessageContent));
-
-      reply =
-          mode == ChatMode.TODO || mode == ChatMode.TODO_NEGOTIATION
-              ? openAiClient.createTodoJsonWithMessages(messages)
-              : (!imageUrls.isEmpty()
-                  ? openAiClient.createVisionResponseWithMessages(messages)
-                  : openAiClient.createChatCompletionWithMessages(messages));
     } catch (Exception e) {
       throw new IllegalStateException("OpenAI 호출에 실패했습니다. " + e.getMessage());
     }
 
     ChatMessage saved =
         chatMessageRepository.save(
-            new ChatMessage(user, agent, ChatMessage.Role.ASSISTANT, entityMode, reply, null));
+            new ChatMessage(
+                user,
+                agent,
+                ChatMessage.Role.ASSISTANT,
+                entityMode,
+                reply,
+                null,
+                toProgressNotesJson(progressNotes)));
 
     Instant createdAt = saved.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
     return toChatMessageResponse(saved, createdAt);
@@ -328,6 +359,33 @@ public class AgentChatService {
           canStream,
           imageUrls == null ? 0 : imageUrls.size());
       if (!canStream) {
+        if (mode == ChatMode.TODO) {
+          LocalDate[] range = agentChatPlanningSupport.resolveDateRange(content, List.of());
+          LocalDate[] lookupRange =
+              agentChatPlanningSupport.resolveTodoLookupRange(userId, content, range[0], range[1]);
+          String rangeLabel =
+              agentChatPlanningSupport.formatRangeLabel(lookupRange[0], lookupRange[1]);
+          writeNdjson(emitter, Map.of("type", "delta", "text", "요청에서 날짜 범위를 먼저 확인하고 있어요.\n"));
+          writeNdjson(
+              emitter, Map.of("type", "delta", "text", rangeLabel + "의 고정 일정을 확인하고 있어요.\n"));
+          writeNdjson(
+              emitter, Map.of("type", "delta", "text", rangeLabel + "의 기존 TODO를 확인하고 있어요.\n"));
+          writeNdjson(
+              emitter, Map.of("type", "delta", "text", "에이전트 담당 TODO의 연속성과 우선순위를 분석하고 있어요.\n"));
+          writeNdjson(
+              emitter, Map.of("type", "delta", "text", "사용자 시간 제약(dayStart/dayEnd)을 반영하고 있어요.\n"));
+          writeNdjson(
+              emitter, Map.of("type", "delta", "text", "우선순위와 시간 충돌을 정리해서 추천안을 만들고 있어요.\n"));
+        } else if (mode == ChatMode.TODO_NEGOTIATION) {
+          List<NegotiationTodoRequestItem> negotiationTodos =
+              request.negotiationTodos() == null ? List.of() : request.negotiationTodos();
+          LocalDate[] range = agentChatPlanningSupport.resolveDateRange(content, negotiationTodos);
+          String rangeLabel = agentChatPlanningSupport.formatRangeLabel(range[0], range[1]);
+          writeNdjson(
+              emitter, Map.of("type", "delta", "text", rangeLabel + "의 일정을 먼저 확인하고 있어요.\n"));
+          writeNdjson(emitter, Map.of("type", "delta", "text", "고정 일정과 기존 TODO의 충돌을 분석하고 있어요.\n"));
+          writeNdjson(emitter, Map.of("type", "delta", "text", "재배치 초안을 만들고 검증하고 있어요.\n"));
+        }
         ChatMessageResponse data = sendMessage(userId, agentId, request);
         log.info(
             "[CHAT_STREAM] non-stream mode fallback sendMessage success messageId={}", data.id());
@@ -603,7 +661,8 @@ public class AgentChatService {
             createdAt,
             parsed.todo(),
             parseImageUrls(message),
-            parsed.groupTitle());
+            parsed.groupTitle(),
+            parseProgressNotes(message));
       }
     }
 
@@ -615,7 +674,8 @@ public class AgentChatService {
         createdAt,
         null,
         parseImageUrls(message),
-        null);
+        null,
+        parseProgressNotes(message));
   }
 
   // OpenAI vision 입력을 위해, user message content를 multipart 형식으로 만든다.
@@ -736,42 +796,6 @@ public class AgentChatService {
     }
   }
 
-  private String buildNegotiationContext(
-      String userMessage,
-      List<NegotiationTodoRequestItem> negotiationTodos,
-      String preferredDeadlineDate) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(userMessage == null || userMessage.isBlank() ? "선택한 TODO 일정을 조정해주세요." : userMessage);
-    sb.append("\n\n[조정 요청 컨텍스트]");
-    if (preferredDeadlineDate != null && !preferredDeadlineDate.isBlank()) {
-      sb.append("\n- 희망 완료 기한: ").append(preferredDeadlineDate);
-    }
-    if (negotiationTodos == null || negotiationTodos.isEmpty()) {
-      sb.append("\n- 선택된 TODO 없음");
-      return sb.toString();
-    }
-
-    sb.append("\n- 선택된 TODO 목록:");
-    int index = 1;
-    for (NegotiationTodoRequestItem todo : negotiationTodos) {
-      if (todo == null) continue;
-      sb.append("\n  ")
-          .append(index++)
-          .append(". #")
-          .append(todo.scheduleId() == null ? "-" : todo.scheduleId())
-          .append(" ")
-          .append(todo.title() == null ? "" : todo.title())
-          .append(" (")
-          .append(todo.occurrenceDate() == null ? "" : todo.occurrenceDate())
-          .append(" ")
-          .append(todo.startAt() == null ? "" : todo.startAt())
-          .append("~")
-          .append(todo.endAt() == null ? "" : todo.endAt())
-          .append(")");
-    }
-    return sb.toString();
-  }
-
   private String toImageUrlsJson(List<String> imageUrls) {
     if (imageUrls == null || imageUrls.isEmpty()) return null;
     List<String> sanitizedImageUrls = new ArrayList<>();
@@ -812,6 +836,50 @@ public class AgentChatService {
       return sanitizedImageUrls.isEmpty() ? null : sanitizedImageUrls;
     } catch (Exception e) {
       log.warn("이미지 URL JSON 역직렬화에 실패했습니다. message={}", e.getMessage());
+      return null;
+    }
+  }
+
+  private String toProgressNotesJson(List<String> progressNotes) {
+    if (progressNotes == null || progressNotes.isEmpty()) return null;
+    List<String> sanitizedProgressNotes = new ArrayList<>();
+    for (String progressNote : progressNotes) {
+      if (progressNote == null) continue;
+      String trimmedProgressNote = progressNote.trim();
+      if (trimmedProgressNote.isEmpty()) continue;
+      sanitizedProgressNotes.add(trimmedProgressNote);
+    }
+    if (sanitizedProgressNotes.isEmpty()) return null;
+    try {
+      return objectMapper.writeValueAsString(sanitizedProgressNotes);
+    } catch (Exception e) {
+      log.warn("진행 상태 JSON 직렬화에 실패했습니다. message={}", e.getMessage());
+      return null;
+    }
+  }
+
+  private List<String> parseProgressNotes(ChatMessage message) {
+    if (message == null
+        || message.getProgressNotesJson() == null
+        || message.getProgressNotesJson().isBlank()) {
+      return null;
+    }
+    try {
+      List<String> parsed =
+          objectMapper.readValue(
+              message.getProgressNotesJson(),
+              objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+      if (parsed == null || parsed.isEmpty()) return null;
+      List<String> sanitizedProgressNotes = new ArrayList<>();
+      for (String progressNote : parsed) {
+        if (progressNote == null) continue;
+        String trimmedProgressNote = progressNote.trim();
+        if (trimmedProgressNote.isEmpty()) continue;
+        sanitizedProgressNotes.add(trimmedProgressNote);
+      }
+      return sanitizedProgressNotes.isEmpty() ? null : sanitizedProgressNotes;
+    } catch (Exception e) {
+      log.warn("진행 상태 JSON 역직렬화에 실패했습니다. message={}", e.getMessage());
       return null;
     }
   }

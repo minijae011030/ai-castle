@@ -22,6 +22,9 @@ public class JsonAuthenticationEntryPoint implements AuthenticationEntryPoint {
       HttpServletResponse response,
       AuthenticationException authException)
       throws IOException {
+    if (response.isCommitted()) {
+      return;
+    }
     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
     response.setContentType("application/json;charset=UTF-8");
     String escaped =

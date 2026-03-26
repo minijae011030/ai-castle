@@ -76,6 +76,7 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
           mode,
           content: '',
           createdAt: now,
+          progressNotes: [],
         }
 
         if (!old || typeof old !== 'object' || !('pages' in old)) {
@@ -124,13 +125,56 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
         })
       }
 
+      const appendProgressNote = (rawNote: string) => {
+        const nextNote = (rawNote ?? '').trim()
+        if (!nextNote) return
+        replaceAssistantMessage((message) => {
+          const previousNotes = message.progressNotes ?? []
+          if (previousNotes[previousNotes.length - 1] === nextNote) {
+            return message
+          }
+          return {
+            ...message,
+            progressNotes: [...previousNotes, nextNote],
+          }
+        })
+      }
+
+      const isProgressDelta = (deltaText: string) => {
+        if (mode === 'CHAT') return false
+        const normalized = (deltaText ?? '').trim()
+        if (!normalized) return false
+        return (
+          normalized.startsWith('효율적인') ||
+          normalized.startsWith('요청에서 날짜 범위를') ||
+          normalized.includes('조회중') ||
+          normalized.includes('확인하고 있어요') ||
+          normalized.includes('점검하고 있어요') ||
+          normalized.includes('정리해서') ||
+          normalized.includes('추천안을 만들고 있어요') ||
+          normalized.includes('초안을 만들고 있어요') ||
+          normalized.includes('분석중') ||
+          normalized.includes('분석하고 있어요') ||
+          normalized.includes('반영하고 있어요') ||
+          normalized.includes('시간 제약') ||
+          normalized.includes('계산') ||
+          normalized.includes('생성중') ||
+          normalized.includes('검증하고 있어요') ||
+          normalized.includes('해석') ||
+          normalized.endsWith('...')
+        )
+      }
+
       const startDeltaTypingLoop = () => {
         if (streamDeltaTimerRef.current !== null) return
         streamDeltaTimerRef.current = window.setInterval(() => {
           const queue = streamDeltaQueueRef.current
           if (queue.length === 0) {
             if (pendingFinalMessageRef.current) {
-              replaceAssistantMessage(() => pendingFinalMessageRef.current as ChatMessageInterface)
+              replaceAssistantMessage((message) => ({
+                ...(pendingFinalMessageRef.current as ChatMessageInterface),
+                progressNotes: message.progressNotes ?? null,
+              }))
               pendingFinalMessageRef.current = null
               stopDeltaTypingLoop()
             }
@@ -166,13 +210,20 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
           {
             signal: abortController.signal,
             onDelta: (text) => {
+              if (isProgressDelta(text ?? '')) {
+                appendProgressNote(text ?? '')
+                return
+              }
               streamDeltaQueueRef.current.push(text ?? '')
               startDeltaTypingLoop()
             },
             onFinal: (finalMessage) => {
               pendingFinalMessageRef.current = finalMessage
               if (streamDeltaQueueRef.current.length === 0) {
-                replaceAssistantMessage(() => finalMessage)
+                replaceAssistantMessage((message) => ({
+                  ...finalMessage,
+                  progressNotes: message.progressNotes ?? null,
+                }))
                 pendingFinalMessageRef.current = null
                 stopDeltaTypingLoop()
               }
@@ -194,7 +245,10 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
             mode,
             imageUrls: undefined,
           })
-          replaceAssistantMessage(() => fallbackMessage)
+          replaceAssistantMessage((message) => ({
+            ...fallbackMessage,
+            progressNotes: message.progressNotes ?? null,
+          }))
           onSuccess?.()
           return true
         } catch {

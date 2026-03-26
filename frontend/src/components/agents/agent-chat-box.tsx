@@ -332,6 +332,7 @@ export const AgentChatBox = ({
               const message_image_urls = (message.imageUrls ?? []).filter((image_url) =>
                 Boolean(image_url),
               )
+              const progress_notes = (message.progressNotes ?? []).filter((note) => Boolean(note))
 
               return (
                 <div
@@ -358,6 +359,18 @@ export const AgentChatBox = ({
                     </Button>
                   )}
                   <div className="max-w-[70%]">
+                    {is_assistant && progress_notes.length > 0 ? (
+                      <div className="mb-1 space-y-0.5">
+                        {progress_notes.map((note) => (
+                          <p
+                            key={`${message.id}-${note}`}
+                            className="text-[11px] text-muted-foreground"
+                          >
+                            {note}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
                     {is_user && message_image_urls.length > 0 ? (
                       <div className="mb-2 grid grid-cols-2 gap-2">
                         {message_image_urls.map((image_url) => (

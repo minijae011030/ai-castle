@@ -26,4 +26,48 @@ public interface ScheduleOccurrenceRepository extends JpaRepository<ScheduleOccu
 
   Optional<ScheduleOccurrence> findByUserAccount_IdAndTypeAndRecurringTemplateIdAndOccurrenceDate(
       Long userAccountId, ScheduleType type, Long recurringTemplateId, LocalDate occurrenceDate);
+
+  @Query(
+      """
+      select o from ScheduleOccurrence o
+      where o.userAccount.id = :userId
+        and o.occurrenceDate between :startDate and :endDate
+      order by o.occurrenceDate, o.startAt, o.id
+      """)
+  List<ScheduleOccurrence> findByUserAndDateRange(
+      @Param("userId") Long userId,
+      @Param("startDate") LocalDate startDate,
+      @Param("endDate") LocalDate endDate);
+
+  @Query(
+      """
+      select o from ScheduleOccurrence o
+      where o.userAccount.id = :userId
+        and o.type = :type
+        and o.occurrenceDate between :startDate and :endDate
+      order by o.occurrenceDate, o.startAt, o.id
+      """)
+  List<ScheduleOccurrence> findByUserAndTypeAndDateRange(
+      @Param("userId") Long userId,
+      @Param("type") ScheduleType type,
+      @Param("startDate") LocalDate startDate,
+      @Param("endDate") LocalDate endDate);
+
+  @Query(
+      """
+      select o from ScheduleOccurrence o
+      where o.userAccount.id = :userId
+        and o.type = :type
+        and o.agentId = :agentId
+        and o.occurrenceDate between :startDate and :endDate
+      order by o.occurrenceDate, o.startAt, o.id
+      """)
+  List<ScheduleOccurrence> findByUserAndTypeAndAgentAndDateRange(
+      @Param("userId") Long userId,
+      @Param("type") ScheduleType type,
+      @Param("agentId") Long agentId,
+      @Param("startDate") LocalDate startDate,
+      @Param("endDate") LocalDate endDate);
+
+  List<ScheduleOccurrence> findByUserAccount_IdAndIdIn(Long userAccountId, List<Long> ids);
 }

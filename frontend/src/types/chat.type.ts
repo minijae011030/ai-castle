@@ -24,6 +24,7 @@ export interface ChatMessageInterface {
   todo?: TodoItemInterface[] | null
   imageUrls?: string[] | null
   groupTitle?: string | null
+  progressNotes?: string[] | null
 }
 
 export interface MainChatHistoryResponseInterface {
