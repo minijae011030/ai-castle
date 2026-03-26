@@ -45,6 +45,19 @@
 - [ ] 조정패널 제거 여부 결정 후 UX 정리
   - [ ] 자연어 조정(패널 없이) 플로우 실험
   - [ ] 애매한 타깃(group/day/single) 확인 질문 UX
+- [ ] 홈 대시보드 구축 (학습 분석 중심)
+  - [ ] KPI 카드: 오늘 집중 시간, 총 학습 시간, 남은 가능 시간
+  - [ ] 주간 히트맵 + 과목 비중 도넛 차트
+  - [ ] 과목별 막대/추세 차트 (일/주/월)
+  - [ ] AI 인사이트 카드: 과부하 경고, 내일 예측 부하, 추천 액션
+  - [ ] 에이전트별 기여도 위젯 + 조정 히스토리 요약
+  - [ ] 스펙 문서: `docs/dashboard_description.md` 기준으로 구현
+- [ ] 메인 에이전트 기반 서브에이전트 Draft 자동 추천
+  - [ ] 트리거 발화 감지(예: "뭐해야할지 모르겠어요", "과외 붙여주세요")
+  - [ ] 메인 에이전트가 sub-agent draft 리스트 제안(name/description/systemPromptDraft/why)
+  - [ ] 사용자 승인 후 생성(자동 커밋 금지, confirm 단계 필수)
+  - [ ] 일부 선택 생성/수정 후 생성 UX 지원
+  - [ ] 스펙 문서: `docs/sub_agent_draft_description.md` 기준으로 구현
 
 > 결정: "조정"은 별도의 Todo 목록/상세 페이지가 아니라 **메인/서브 에이전트 채팅 화면에서 대화로만 진행**한다.  
 > Todo는 조정 결과가 반영된 **최종 일정 스냅샷**을 저장·표시하는 역할에 집중한다.
@@ -106,6 +119,10 @@
 - [ ] Report 제출/End Batch 요약 API 및 저장 흐름
 - [x] AI 툴 호출(명령어) 화이트리스트 기반 실행기 1차 구축 (TODO 루프 내)
 - [ ] AI 툴 호출 strict schema + 재시도/실패 정책 고도화
+- [ ] 메인 에이전트 Draft 추천 API
+  - [ ] `POST /api/agents/draft-recommendations`
+  - [ ] `POST /api/agents/drafts/confirm-create`
+  - [ ] draft 상태 모델(`DRAFT/CONFIRMED/CANCELLED`)
 
 ## 조정 기능 구현 순서 (권장)
 
