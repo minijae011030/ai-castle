@@ -18,7 +18,6 @@ import { Route as ProtectedSettingsRouteImport } from './routes/_protected/setti
 import { Route as ProtectedCalendarRouteImport } from './routes/_protected/calendar'
 import { Route as ProtectedAiRouteImport } from './routes/_protected/ai'
 import { Route as ProtectedAgentsRouteImport } from './routes/_protected/agents'
-import { Route as ProtectedAgentsAgentIdChatRouteImport } from './routes/_protected/agents/$agentId.chat'
 
 const TestRoute = TestRouteImport.update({
   id: '/test',
@@ -64,34 +63,26 @@ const ProtectedAgentsRoute = ProtectedAgentsRouteImport.update({
   path: '/agents',
   getParentRoute: () => ProtectedRoute,
 } as any)
-const ProtectedAgentsAgentIdChatRoute =
-  ProtectedAgentsAgentIdChatRouteImport.update({
-    id: '/$agentId/chat',
-    path: '/$agentId/chat',
-    getParentRoute: () => ProtectedAgentsRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ProtectedIndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/test': typeof TestRoute
-  '/agents': typeof ProtectedAgentsRouteWithChildren
+  '/agents': typeof ProtectedAgentsRoute
   '/ai': typeof ProtectedAiRoute
   '/calendar': typeof ProtectedCalendarRoute
   '/settings': typeof ProtectedSettingsRoute
-  '/agents/$agentId/chat': typeof ProtectedAgentsAgentIdChatRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/test': typeof TestRoute
-  '/agents': typeof ProtectedAgentsRouteWithChildren
+  '/agents': typeof ProtectedAgentsRoute
   '/ai': typeof ProtectedAiRoute
   '/calendar': typeof ProtectedCalendarRoute
   '/settings': typeof ProtectedSettingsRoute
   '/': typeof ProtectedIndexRoute
-  '/agents/$agentId/chat': typeof ProtectedAgentsAgentIdChatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -99,12 +90,11 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/test': typeof TestRoute
-  '/_protected/agents': typeof ProtectedAgentsRouteWithChildren
+  '/_protected/agents': typeof ProtectedAgentsRoute
   '/_protected/ai': typeof ProtectedAiRoute
   '/_protected/calendar': typeof ProtectedCalendarRoute
   '/_protected/settings': typeof ProtectedSettingsRoute
   '/_protected/': typeof ProtectedIndexRoute
-  '/_protected/agents/$agentId/chat': typeof ProtectedAgentsAgentIdChatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,7 +107,6 @@ export interface FileRouteTypes {
     | '/ai'
     | '/calendar'
     | '/settings'
-    | '/agents/$agentId/chat'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -128,7 +117,6 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/settings'
     | '/'
-    | '/agents/$agentId/chat'
   id:
     | '__root__'
     | '/_protected'
@@ -140,7 +128,6 @@ export interface FileRouteTypes {
     | '/_protected/calendar'
     | '/_protected/settings'
     | '/_protected/'
-    | '/_protected/agents/$agentId/chat'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -215,30 +202,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedAgentsRouteImport
       parentRoute: typeof ProtectedRoute
     }
-    '/_protected/agents/$agentId/chat': {
-      id: '/_protected/agents/$agentId/chat'
-      path: '/$agentId/chat'
-      fullPath: '/agents/$agentId/chat'
-      preLoaderRoute: typeof ProtectedAgentsAgentIdChatRouteImport
-      parentRoute: typeof ProtectedAgentsRoute
-    }
   }
 }
 
-interface ProtectedAgentsRouteChildren {
-  ProtectedAgentsAgentIdChatRoute: typeof ProtectedAgentsAgentIdChatRoute
-}
-
-const ProtectedAgentsRouteChildren: ProtectedAgentsRouteChildren = {
-  ProtectedAgentsAgentIdChatRoute: ProtectedAgentsAgentIdChatRoute,
-}
-
-const ProtectedAgentsRouteWithChildren = ProtectedAgentsRoute._addFileChildren(
-  ProtectedAgentsRouteChildren,
-)
-
 interface ProtectedRouteChildren {
-  ProtectedAgentsRoute: typeof ProtectedAgentsRouteWithChildren
+  ProtectedAgentsRoute: typeof ProtectedAgentsRoute
   ProtectedAiRoute: typeof ProtectedAiRoute
   ProtectedCalendarRoute: typeof ProtectedCalendarRoute
   ProtectedSettingsRoute: typeof ProtectedSettingsRoute
@@ -246,7 +214,7 @@ interface ProtectedRouteChildren {
 }
 
 const ProtectedRouteChildren: ProtectedRouteChildren = {
-  ProtectedAgentsRoute: ProtectedAgentsRouteWithChildren,
+  ProtectedAgentsRoute: ProtectedAgentsRoute,
   ProtectedAiRoute: ProtectedAiRoute,
   ProtectedCalendarRoute: ProtectedCalendarRoute,
   ProtectedSettingsRoute: ProtectedSettingsRoute,

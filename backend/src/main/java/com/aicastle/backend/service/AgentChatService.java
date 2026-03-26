@@ -24,6 +24,7 @@ import com.aicastle.backend.repository.ChatMessageRepository;
 import com.aicastle.backend.repository.UserAccountRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -31,11 +32,16 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 /** 서브 에이전트와의 채팅 스켈레톤 서비스. */
 @Service
@@ -281,6 +287,303 @@ public class AgentChatService {
 
     Instant createdAt = saved.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
     return toChatMessageResponse(saved, createdAt);
+  }
+
+  /**
+   * NDJSON 스트리밍으로 assistant 응답을 점진적으로 전송한다.
+   *
+   * <p>현재는 UX 목적상 CHAT(텍스트)만 스트리밍을 적용한다. (이미지/구조화 TODO는 기존 방식 유지)
+   */
+  public void sendMessageStreamNdjson(
+      Long userId, Long agentId, ChatSendRequest request, ResponseBodyEmitter emitter)
+      throws IOException {
+    if (emitter == null) {
+      throw new IllegalArgumentException("emitter 는 null 일 수 없습니다.");
+    }
+
+    log.info("[CHAT_STREAM] start userId={}, agentId={}", userId, agentId);
+    // 프론트가 빠르게 렌더링할 수 있도록 시작 이벤트를 먼저 보낸다.
+    writeNdjson(emitter, Map.of("type", "started"));
+
+    try {
+      AgentRole agent =
+          agentRoleRepository
+              .findById(agentId)
+              .orElseThrow(() -> new IllegalArgumentException("에이전트를 찾을 수 없습니다."));
+      assertSubAgentLinkedToMain(agent);
+
+      String content = request.content() == null ? "" : request.content().trim();
+      if (content.isBlank()) {
+        throw new IllegalArgumentException("메시지 내용은 비어 있을 수 없습니다.");
+      }
+
+      List<String> imageUrls = request.imageUrls() == null ? List.of() : request.imageUrls();
+      ChatMode mode = request.mode();
+
+      // TODO/협상/이미지 모드는 스트리밍 복잡도가 높아 기존 방식으로 처리 (1회만 내려줌)
+      boolean canStream = mode == ChatMode.CHAT && (imageUrls == null || imageUrls.isEmpty());
+      log.info(
+          "[CHAT_STREAM] mode={}, canStream={}, imageCount={}",
+          mode,
+          canStream,
+          imageUrls == null ? 0 : imageUrls.size());
+      if (!canStream) {
+        ChatMessageResponse data = sendMessage(userId, agentId, request);
+        log.info(
+            "[CHAT_STREAM] non-stream mode fallback sendMessage success messageId={}", data.id());
+        writeNdjson(emitter, Map.of("type", "final", "message", data));
+        emitter.complete();
+        return;
+      }
+
+      UserAccount user =
+          userAccountRepository
+              .findById(userId)
+              .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+      List<ChatMessage> recentDesc =
+          chatMessageRepository.findTop50ByUserAccount_IdAndAgentRole_IdOrderByCreatedAtDesc(
+              userId, agentId);
+
+      // 유저 메시지 저장
+      chatMessageRepository.save(
+          new ChatMessage(
+              user, agent, ChatMessage.Role.USER, ChatMessage.Mode.CHAT, content, null));
+
+      String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
+
+      LocalDate today = LocalDate.now(PLANNER_ZONE_ID);
+      LocalTime now = LocalTime.now(PLANNER_ZONE_ID).withNano(0);
+      String calendarAnchor =
+          "[현재 시각 기준]\n"
+              + "- 오늘 날짜(Asia/Seoul): "
+              + today
+              + "\n"
+              + "- 현재 시각: "
+              + now
+              + "\n"
+              + "- TODO/일정의 scheduledDate, startAt, endAt는 위 오늘을 기준으로 현실적인 날짜·시간을 사용하라. "
+              + "학습 데이터에 묶인 과거 연도(예: 2024)를 사용하지 마라.\n\n";
+
+      String systemPrompt =
+          calendarAnchor
+              + agent.getSystemPrompt()
+              + "\n\n"
+              + "너는 "
+              + roleLabel
+              + " 에이전트("
+              + agent.getName()
+              + ")다. 한국어로 간결하고 실행 가능하게 답하라.\n\n"
+              + "[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
+
+      List<Message> messages = new ArrayList<>();
+      messages.add(new Message("system", systemPrompt));
+
+      // 고정 메모리 주입
+      var pinnedMemories =
+          agentPinnedMemoryRepository.findByUserAccount_IdAndAgentRole_IdOrderByCreatedAtAsc(
+              userId, agentId);
+      if (!pinnedMemories.isEmpty()) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[고정 메모리]\n");
+        for (int i = 0; i < pinnedMemories.size(); i++) {
+          String mem = pinnedMemories.get(i).getContent();
+          if (mem == null || mem.isBlank()) continue;
+          sb.append("- ").append(mem.trim()).append("\n");
+        }
+        messages.add(new Message("system", sb.toString().trim()));
+      }
+
+      // 최근 대화 슬라이딩 윈도우 주입
+      List<ChatMessage> recentAsc = new ArrayList<>(recentDesc);
+      Collections.reverse(recentAsc);
+      for (ChatMessage m : recentAsc) {
+        if (m == null || m.getContent() == null || m.getContent().isBlank()) continue;
+        String role = m.getRole() == ChatMessage.Role.USER ? "user" : "assistant";
+        messages.add(new Message(role, m.getContent()));
+      }
+
+      messages.add(new Message("user", content));
+
+      AtomicReference<StringBuilder> assembled = new AtomicReference<>(new StringBuilder());
+      AtomicBoolean hadStreamError = new AtomicBoolean(false);
+
+      openAiClient.streamChatCompletionWithMessages(
+          messages,
+          delta -> {
+            try {
+              assembled.get().append(delta);
+              // 프론트는 delta를 이어붙여 렌더링
+              writeNdjson(emitter, Map.of("type", "delta", "text", delta));
+            } catch (Exception e) {
+              hadStreamError.set(true);
+              log.warn("[CHAT_STREAM] delta write failed: {}", e.getMessage());
+            }
+          },
+          errorMessage -> {
+            try {
+              hadStreamError.set(true);
+              log.warn("[CHAT_STREAM] openai stream error: {}", errorMessage);
+              writeNdjson(emitter, Map.of("type", "error", "message", errorMessage));
+            } catch (Exception ignored) {
+              log.warn("[CHAT_STREAM] error frame write failed");
+            }
+          });
+
+      String finalText = assembled.get().toString();
+      log.info(
+          "[CHAT_STREAM] assembledLength={}, hadStreamError={}",
+          finalText.length(),
+          hadStreamError.get());
+      if (finalText.isBlank()) {
+        // OpenAI 스트림 이벤트 포맷 차이 등으로 delta가 비는 경우를 대비해 즉시 폴백한다.
+        String fallbackReply = openAiClient.createChatCompletionWithMessages(messages);
+        if (fallbackReply != null && !fallbackReply.isBlank()) {
+          log.info(
+              "[CHAT_STREAM] blank stream fallback completion success length={}",
+              fallbackReply.length());
+          finalText = fallbackReply;
+        } else if (hadStreamError.get()) {
+          throw new IllegalStateException("스트리밍 응답을 생성하지 못했습니다.");
+        } else {
+          finalText = "";
+        }
+      }
+
+      ChatMessage saved =
+          chatMessageRepository.save(
+              new ChatMessage(
+                  user, agent, ChatMessage.Role.ASSISTANT, ChatMessage.Mode.CHAT, finalText, null));
+
+      Instant createdAt = saved.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
+      ChatMessageResponse response = toChatMessageResponse(saved, createdAt);
+      writeNdjson(emitter, Map.of("type", "final", "message", response));
+      log.info(
+          "[CHAT_STREAM] final sent messageId={}, contentLength={}",
+          response.id(),
+          response.content().length());
+      emitter.complete();
+    } catch (Exception e) {
+      log.error(
+          "[CHAT_STREAM] failed userId={}, agentId={}, reason={}",
+          userId,
+          agentId,
+          e.getMessage(),
+          e);
+      writeNdjson(
+          emitter,
+          Map.of(
+              "type", "error", "message", e.getMessage() == null ? "오류가 발생했습니다." : e.getMessage()));
+      // chunked 응답에서 completeWithError는 브라우저에서 ERR_INCOMPLETE_CHUNKED_ENCODING으로 보일 수 있다.
+      // 에러 이벤트를 이미 내려보냈으므로 정상 complete로 닫는다.
+      emitter.complete();
+    }
+  }
+
+  public void sendMessageStream(
+      Long userId,
+      Long agentId,
+      ChatSendRequest request,
+      Consumer<String> onDelta,
+      Consumer<ChatMessageResponse> onFinal,
+      Consumer<String> onError) {
+    try {
+      AgentRole agent =
+          agentRoleRepository
+              .findById(agentId)
+              .orElseThrow(() -> new IllegalArgumentException("에이전트를 찾을 수 없습니다."));
+      assertSubAgentLinkedToMain(agent);
+
+      String content = request.content() == null ? "" : request.content().trim();
+      if (content.isBlank()) {
+        throw new IllegalArgumentException("메시지 내용은 비어 있을 수 없습니다.");
+      }
+
+      List<String> imageUrls = request.imageUrls() == null ? List.of() : request.imageUrls();
+      ChatMode mode = request.mode();
+      boolean canStream = mode == ChatMode.CHAT && (imageUrls == null || imageUrls.isEmpty());
+      if (!canStream) {
+        onFinal.accept(sendMessage(userId, agentId, request));
+        return;
+      }
+
+      UserAccount user =
+          userAccountRepository
+              .findById(userId)
+              .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+      List<ChatMessage> recentDesc =
+          chatMessageRepository.findTop50ByUserAccount_IdAndAgentRole_IdOrderByCreatedAtDesc(
+              userId, agentId);
+      chatMessageRepository.save(
+          new ChatMessage(
+              user, agent, ChatMessage.Role.USER, ChatMessage.Mode.CHAT, content, null));
+
+      String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
+      LocalDate today = LocalDate.now(PLANNER_ZONE_ID);
+      LocalTime now = LocalTime.now(PLANNER_ZONE_ID).withNano(0);
+      String systemPrompt =
+          "[현재 시각 기준]\n- 오늘 날짜(Asia/Seoul): "
+              + today
+              + "\n- 현재 시각: "
+              + now
+              + "\n\n"
+              + agent.getSystemPrompt()
+              + "\n\n너는 "
+              + roleLabel
+              + " 에이전트("
+              + agent.getName()
+              + ")다. 한국어로 간결하고 실행 가능하게 답하라.\n\n[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
+
+      List<Message> messages = new ArrayList<>();
+      messages.add(new Message("system", systemPrompt));
+      List<ChatMessage> recentAsc = new ArrayList<>(recentDesc);
+      Collections.reverse(recentAsc);
+      for (ChatMessage m : recentAsc) {
+        if (m == null || m.getContent() == null || m.getContent().isBlank()) continue;
+        messages.add(
+            new Message(
+                m.getRole() == ChatMessage.Role.USER ? "user" : "assistant", m.getContent()));
+      }
+      messages.add(new Message("user", content));
+
+      StringBuilder assembled = new StringBuilder();
+      openAiClient.streamChatCompletionWithMessages(
+          messages,
+          delta -> {
+            assembled.append(delta);
+            onDelta.accept(delta);
+          },
+          onError);
+
+      // WS에서 답변 누락이 보이면 non-stream completion으로 보정한다.
+      if (assembled.toString().isBlank()) {
+        String fallbackReply = openAiClient.createChatCompletionWithMessages(messages);
+        if (fallbackReply != null && !fallbackReply.isBlank()) {
+          assembled.append(fallbackReply);
+        }
+      }
+
+      ChatMessage saved =
+          chatMessageRepository.save(
+              new ChatMessage(
+                  user,
+                  agent,
+                  ChatMessage.Role.ASSISTANT,
+                  ChatMessage.Mode.CHAT,
+                  assembled.toString(),
+                  null));
+      Instant createdAt = saved.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
+      onFinal.accept(toChatMessageResponse(saved, createdAt));
+    } catch (Exception e) {
+      onError.accept(e.getMessage() == null ? "오류가 발생했습니다." : e.getMessage());
+    }
+  }
+
+  private void writeNdjson(ResponseBodyEmitter emitter, Object payload) throws IOException {
+    String json = objectMapper.writeValueAsString(payload);
+    emitter.send(json + "\n", org.springframework.http.MediaType.APPLICATION_NDJSON);
+    // 일부 프록시/브라우저에서 flush 타이밍 이슈가 있어 문자열로 확실히 보낸다.
+    emitter.send("", org.springframework.http.MediaType.TEXT_PLAIN);
   }
 
   private ChatMessageResponse toChatMessageResponse(ChatMessage message, Instant createdAt) {

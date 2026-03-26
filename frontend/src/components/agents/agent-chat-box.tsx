@@ -1,5 +1,4 @@
 import { BookmarkPlus, ImagePlusIcon } from 'lucide-react'
-import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownMessage } from '@/components/chat/markdown-message'
 import { TodoMessage } from '@/components/chat/todo-message'
@@ -13,9 +12,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { useAgentChatStream } from '@/hooks/useAgentChatStream'
 import { useCreateAgentPinnedMemory } from '@/hooks/queries/agent-query'
 import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/queries/chat-query'
-import { getFirebaseStorage } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import type {
   ChatMessageInterface,
@@ -53,12 +52,13 @@ export const AgentChatBox = ({
   const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
   const [chatImageDrafts, setChatImageDrafts] = useState<ImageDraftItemInterface[]>([])
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([])
-  const [isUploadingChatImages, setIsUploadingChatImages] = useState(false)
+  const isUploadingChatImages = false
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const chatImageInputRef = useRef<HTMLInputElement | null>(null)
   const sendLockRef = useRef(false)
   const lastSentContentRef = useRef<string | null>(null)
   const keepScrollOffsetRef = useRef<{ top: number; height: number } | null>(null)
+  const { isStreamingReply, sendStreamMessage } = useAgentChatStream({ agentId })
 
   const {
     data: chatPages,
@@ -92,8 +92,8 @@ export const AgentChatBox = ({
   })
 
   useEffect(() => {
-    onSendPendingChange?.(sendChatMutation.isPending)
-  }, [onSendPendingChange, sendChatMutation.isPending])
+    onSendPendingChange?.(sendChatMutation.isPending || isStreamingReply)
+  }, [isStreamingReply, onSendPendingChange, sendChatMutation.isPending])
 
   useEffect(() => {
     if (!chatScrollRef.current) return
@@ -140,21 +140,6 @@ export const AgentChatBox = ({
       revokeDraftObjectUrls(chatImageDrafts)
     }
   }, [chatImageDrafts])
-
-  const uploadChatImagesToFirebase = async (): Promise<string[]> => {
-    if (chatImageDrafts.length === 0) return []
-    const storage = getFirebaseStorage()
-    const uploadedUrls: string[] = []
-    for (const draft of chatImageDrafts) {
-      const ext = draft.mime_type.split('/')[1] || 'png'
-      const objectPath = `chat_images/${makeRandomId()}.${ext}`
-      const fileRef = storageRef(storage, objectPath)
-      await uploadBytes(fileRef, draft.file, { contentType: draft.mime_type })
-      const downloadUrl = await getDownloadURL(fileRef)
-      uploadedUrls.push(downloadUrl)
-    }
-    return uploadedUrls
-  }
 
   const handlePickChatImage: React.ChangeEventHandler<HTMLInputElement> = async (event) => {
     const inputEl = event.currentTarget
@@ -225,43 +210,43 @@ export const AgentChatBox = ({
   }): Promise<boolean> => {
     if (agentId === null) return false
     const content = payload.content.trim()
-    if (!content || sendChatMutation.isPending || sendLockRef.current) return false
+    if (!content || sendChatMutation.isPending || sendLockRef.current || isStreamingReply)
+      return false
+
+    // 협상 모드는 기존 HTTP 계약을 그대로 사용한다.
+    if (payload.mode === 'TODO_NEGOTIATION') {
+      sendLockRef.current = true
+      lastSentContentRef.current = content
+      sendChatMutation.mutate({
+        content,
+        mode: payload.mode,
+        negotiationTodos: payload.negotiationTodos,
+        preferredDeadlineDate: payload.preferredDeadlineDate,
+      })
+      return true
+    }
+
+    // 현재 /agents 스트림 전송은 텍스트만 허용한다.
+    if (chatImageDrafts.length > 0) {
+      toast.error('현재 /agents 채팅은 텍스트 실시간 전송만 지원합니다. 이미지를 제거해주세요.')
+      return false
+    }
+
     sendLockRef.current = true
     lastSentContentRef.current = content
-    if (payload.mode !== 'TODO_NEGOTIATION') {
-      setChatInput('')
-    }
-
-    let imageUrlsToSend: string[] | undefined = undefined
-    if (payload.mode !== 'TODO_NEGOTIATION' && chatImageDrafts.length > 0) {
-      setIsUploadingChatImages(true)
-      try {
-        const urls = await uploadChatImagesToFirebase()
-        imageUrlsToSend = urls
-        setUploadedImageUrls(urls)
-        setChatImageDrafts((previous) => {
-          revokeDraftObjectUrls(previous)
-          return []
-        })
-      } catch {
-        toast.error('이미지 업로드에 실패했습니다.')
-        setChatInput(content)
-        lastSentContentRef.current = null
-        sendLockRef.current = false
-        return false
-      } finally {
-        setIsUploadingChatImages(false)
-      }
-    }
-
-    sendChatMutation.mutate({
+    const ok = await sendStreamMessage({
       content,
       mode: payload.mode,
-      imageUrls: imageUrlsToSend,
-      negotiationTodos: payload.negotiationTodos,
-      preferredDeadlineDate: payload.preferredDeadlineDate,
+      onBeforeStart: () => setChatInput(''),
+      onSuccess: () => {
+        lastSentContentRef.current = null
+      },
+      onFailureRestore: () => {
+        setChatInput(content)
+      },
     })
-    return true
+    sendLockRef.current = false
+    return ok
   }
 
   const sendNegotiationRequest = useCallback(
@@ -272,7 +257,8 @@ export const AgentChatBox = ({
     }): boolean => {
       if (agentId === null) return false
       const content = payload.content.trim()
-      if (!content || sendChatMutation.isPending || sendLockRef.current) return false
+      if (!content || sendChatMutation.isPending || sendLockRef.current || isStreamingReply)
+        return false
       sendLockRef.current = true
       lastSentContentRef.current = content
       sendChatMutation.mutate({
@@ -283,7 +269,7 @@ export const AgentChatBox = ({
       })
       return true
     },
-    [agentId, sendChatMutation],
+    [agentId, isStreamingReply, sendChatMutation],
   )
 
   useEffect(() => {
@@ -545,7 +531,12 @@ export const AgentChatBox = ({
                 type="button"
                 size="sm"
                 onClick={handleSendChat}
-                disabled={!chatInput.trim() || sendChatMutation.isPending || isUploadingChatImages}
+                disabled={
+                  !chatInput.trim() ||
+                  sendChatMutation.isPending ||
+                  isUploadingChatImages ||
+                  isStreamingReply
+                }
               >
                 보내기
               </Button>

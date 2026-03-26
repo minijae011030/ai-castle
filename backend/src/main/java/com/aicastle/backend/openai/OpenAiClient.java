@@ -12,12 +12,19 @@ import com.aicastle.backend.openai.OpenAiChatDtos.ResponsesInputText;
 import com.aicastle.backend.openai.OpenAiChatDtos.TextContentPart;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +61,175 @@ public class OpenAiClient {
                 "Bearer " + (properties.apiKey() == null ? "" : properties.apiKey()))
             .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .build();
+  }
+
+  /**
+   * Chat Completions 스트리밍을 사용해 delta를 순차적으로 흘려준다.
+   *
+   * <p>프론트에서 "한 글자씩/한 줄씩" 나오는 UX를 위해 사용한다.
+   *
+   * <p>주의: 이 메서드는 CHAT(텍스트) 모드에만 사용한다. (TODO structured output/vision은 별도 경로)
+   */
+  public void streamChatCompletionWithMessages(
+      List<Message> messages, Consumer<String> onDelta, Consumer<String> onError) {
+    if (properties.apiKey() == null || properties.apiKey().isBlank()) {
+      throw new IllegalStateException("OPENAI_API_KEY 가 설정되어 있지 않습니다.");
+    }
+    if (properties.model() == null || properties.model().isBlank()) {
+      throw new IllegalStateException("openai.model 이 설정되어 있지 않습니다.");
+    }
+    if (messages == null || messages.isEmpty()) {
+      throw new IllegalArgumentException("messages 는 비어 있을 수 없습니다.");
+    }
+    Objects.requireNonNull(onDelta, "onDelta must not be null");
+    Objects.requireNonNull(onError, "onError must not be null");
+
+    String baseUrl =
+        properties.baseUrl() == null || properties.baseUrl().isBlank()
+            ? "https://api.openai.com"
+            : properties.baseUrl().trim();
+
+    try {
+      URL url = new URL(baseUrl + "/v1/responses");
+      HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+      conn.setRequestMethod("POST");
+      conn.setDoOutput(true);
+      conn.setConnectTimeout(10_000);
+      conn.setReadTimeout(60_000);
+      conn.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + properties.apiKey().trim());
+      conn.setRequestProperty(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+      conn.setRequestProperty(HttpHeaders.ACCEPT, "text/event-stream");
+
+      // stream=true 추가
+      List<ResponsesInputMessage> responseInputMessages = new ArrayList<>();
+      for (Message message : messages) {
+        if (message == null) continue;
+        if (!(message.content() instanceof String textContent)) continue;
+        List<Object> parts = new ArrayList<>();
+        // Responses API 규격:
+        // - user/system 역할은 input_text
+        // - assistant 역할은 output_text (input_text 사용 시 400 invalid_value)
+        String contentType = "assistant".equals(message.role()) ? "output_text" : "input_text";
+        parts.add(new ResponsesInputText(contentType, textContent));
+        responseInputMessages.add(new ResponsesInputMessage(message.role(), parts));
+      }
+
+      ObjectNode requestNode = objectMapper.createObjectNode();
+      requestNode.put("model", properties.model().trim());
+      requestNode.put("temperature", 0.2);
+      requestNode.put("stream", true);
+      requestNode.set("input", objectMapper.valueToTree(responseInputMessages));
+      String requestJson = requestNode.toString();
+
+      try (OutputStream os = conn.getOutputStream()) {
+        os.write(requestJson.getBytes(StandardCharsets.UTF_8));
+        os.flush();
+      }
+
+      int status = conn.getResponseCode();
+      log.info("[OPENAI_STREAM] status={}", status);
+      InputStream is =
+          status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream();
+      if (is == null) {
+        onError.accept("OpenAI 스트림 연결에 실패했습니다. status=" + status);
+        return;
+      }
+
+      if (status < 200 || status >= 300) {
+        String errorBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        String compactErrorBody = errorBody == null ? "" : errorBody.trim();
+        if (compactErrorBody.length() > 400) {
+          compactErrorBody = compactErrorBody.substring(0, 400) + "...";
+        }
+        log.warn("[OPENAI_STREAM] non-2xx status={}, body={}", status, compactErrorBody);
+        onError.accept(
+            "OpenAI 스트림 호출 실패(status="
+                + status
+                + ")"
+                + (compactErrorBody.isBlank() ? "" : " - " + compactErrorBody));
+        return;
+      }
+
+      boolean emittedAnyText = false;
+      try (BufferedReader br =
+          new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+        String line;
+        while ((line = br.readLine()) != null) {
+          if (line.isBlank()) continue;
+          if (!line.startsWith("data:")) continue;
+
+          String payload = line.substring("data:".length()).trim();
+          if (payload.isEmpty()) continue;
+          if ("[DONE]".equals(payload)) {
+            return;
+          }
+
+          try {
+            JsonNode root = objectMapper.readTree(payload);
+            String eventType = root.path("type").asText("");
+            if ("response.output_text.delta".equals(eventType)) {
+              String text = root.path("delta").asText("");
+              if (!text.isEmpty()) {
+                emittedAnyText = true;
+                onDelta.accept(text);
+              }
+              continue;
+            }
+
+            // 일부 모델/응답 경로에서는 delta 대신 completed에서만 텍스트가 전달될 수 있다.
+            if ("response.completed".equals(eventType)) {
+              String completedText = extractOutputTextFromCompleted(root);
+              if (!completedText.isBlank()) {
+                if (!emittedAnyText) {
+                  onDelta.accept(completedText);
+                }
+                return;
+              }
+              continue;
+            }
+
+            if ("error".equals(eventType)) {
+              String errorMessage =
+                  root.path("error").path("message").asText("OpenAI 스트림 오류가 발생했습니다.");
+              log.warn("[OPENAI_STREAM] event error={}", errorMessage);
+              onError.accept(errorMessage);
+              return;
+            }
+          } catch (Exception parseError) {
+            // 스트리밍 중 일부 라인이 깨져도 전체를 중단하지 않는다.
+            log.warn("[OPENAI_STREAM] parse failed: {}", parseError.getMessage());
+            onError.accept("OpenAI 스트림 파싱에 실패했습니다.");
+          }
+        }
+      }
+      log.info("[OPENAI_STREAM] completed emittedAnyText={}", emittedAnyText);
+    } catch (Exception e) {
+      log.error("[OPENAI_STREAM] failed: {}", e.getMessage(), e);
+      onError.accept("OpenAI 스트림 호출에 실패했습니다. " + (e.getMessage() == null ? "" : e.getMessage()));
+    }
+  }
+
+  private String extractOutputTextFromCompleted(JsonNode completedEvent) {
+    if (completedEvent == null || completedEvent.isNull()) return "";
+    JsonNode response = completedEvent.path("response");
+    JsonNode output = response.path("output");
+    if (!output.isArray()) return "";
+
+    StringBuilder textBuffer = new StringBuilder();
+    for (JsonNode outputItem : output) {
+      if (outputItem == null || !"message".equals(outputItem.path("type").asText(""))) continue;
+      JsonNode content = outputItem.path("content");
+      if (!content.isArray()) continue;
+      for (JsonNode part : content) {
+        if (part == null) continue;
+        if (!"output_text".equals(part.path("type").asText(""))) continue;
+        String text = part.path("text").asText("");
+        if (!text.isBlank()) {
+          textBuffer.append(text);
+        }
+      }
+    }
+    return textBuffer.toString();
   }
 
   public String createChatCompletion(String systemPrompt, String userContent) {

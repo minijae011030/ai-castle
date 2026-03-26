@@ -109,6 +109,8 @@ export const useSendAgentChatMessage = (
   return useMutation({
     ...options,
     mutationFn: async (body: AgentChatSendBodyInterface) => {
+      // 스트리밍은 페이지(UI)에서 점진 렌더링이 필요해서 여기서는 기본 API만 유지한다.
+      // 필요 시 page에서 sendAgentChatMessageStream을 직접 사용한다.
       const result = await sendAgentChatMessage(agent_id, body)
       return result
     },
