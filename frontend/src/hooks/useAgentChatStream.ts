@@ -11,7 +11,7 @@ interface UseAgentChatStreamParamsInterface {
 
 interface SendAgentChatStreamParamsInterface {
   content: string
-  mode: 'CHAT' | 'TODO'
+  mode?: 'CHAT' | 'TODO'
   onBeforeStart?: () => void
   onSuccess?: () => void
   onFailureRestore?: () => void
@@ -56,6 +56,7 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
       onBeforeStart?.()
 
       const now = new Date().toISOString()
+      const optimisticMode = mode ?? 'CHAT'
       const userLocalId = `local-user-${now}-${Math.random().toString(16).slice(2)}`
       const assistantLocalId = `local-assistant-${now}-${Math.random().toString(16).slice(2)}`
       streamAssistantLocalIdRef.current = assistantLocalId
@@ -65,7 +66,7 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
         const userMessage: ChatMessageInterface = {
           id: userLocalId,
           role: 'USER',
-          mode,
+          mode: optimisticMode,
           content,
           createdAt: now,
           imageUrls: null,
@@ -73,7 +74,7 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
         const skeletonMessage: ChatMessageInterface = {
           id: assistantLocalId,
           role: 'ASSISTANT',
-          mode,
+          mode: optimisticMode,
           content: '',
           createdAt: now,
           progressNotes: [],
@@ -157,6 +158,14 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
           normalized.includes('분석하고 있어요') ||
           normalized.includes('반영하고 있어요') ||
           normalized.includes('시간 제약') ||
+          normalized.includes('스코어를 계산하고 있어요') ||
+          normalized.includes('소요 시간을 추정하고 있어요') ||
+          normalized.includes('분할하고 있어요') ||
+          normalized.includes('삽입하고 있어요') ||
+          normalized.includes('재확인하고 있어요') ||
+          normalized.includes('리스크를 점검하고 있어요') ||
+          normalized.includes('요약 문구를 정리하고 있어요') ||
+          normalized.includes('정리하고 있어요') ||
           normalized.includes('계산') ||
           normalized.includes('생성중') ||
           normalized.includes('검증하고 있어요') ||

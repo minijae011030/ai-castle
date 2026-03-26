@@ -4,13 +4,6 @@ import { MarkdownMessage } from '@/components/chat/markdown-message'
 import { TodoMessage } from '@/components/chat/todo-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAgentChatStream } from '@/hooks/useAgentChatStream'
 import { useCreateAgentPinnedMemory } from '@/hooks/queries/agent-query'
@@ -49,7 +42,6 @@ export const AgentChatBox = ({
   onSendPendingChange,
 }: AgentChatBoxPropsInterface) => {
   const [chatInput, setChatInput] = useState('')
-  const [chatMode, setChatMode] = useState<'CHAT' | 'TODO'>('CHAT')
   const [chatImageDrafts, setChatImageDrafts] = useState<ImageDraftItemInterface[]>([])
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([])
   const isUploadingChatImages = false
@@ -204,7 +196,7 @@ export const AgentChatBox = ({
 
   const sendChat = async (payload: {
     content: string
-    mode: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
+    mode?: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
     negotiationTodos?: NegotiationTodoRequestItemInterface[]
     preferredDeadlineDate?: string
   }): Promise<boolean> => {
@@ -278,7 +270,7 @@ export const AgentChatBox = ({
   }, [onBindNegotiationSender, sendNegotiationRequest])
 
   const handleSendChat = () => {
-    void sendChat({ content: chatInput, mode: chatMode })
+    void sendChat({ content: chatInput })
   }
 
   const handleChatInputKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
@@ -517,43 +509,29 @@ export const AgentChatBox = ({
             rows={3}
             placeholder="메시지를 입력하세요. (Shift+Enter 줄바꿈, Enter 전송)"
           />
-          <div className="flex items-center justify-between gap-2">
-            <Select
-              value={chatMode}
-              onValueChange={(value) => setChatMode(value as 'CHAT' | 'TODO')}
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => chatImageInputRef.current?.click()}
+              disabled={isUploadingChatImages}
             >
-              <SelectTrigger size="sm" className="min-w-24">
-                <SelectValue placeholder="모드" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CHAT">Chat</SelectItem>
-                <SelectItem value="TODO">Todo</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => chatImageInputRef.current?.click()}
-                disabled={isUploadingChatImages}
-              >
-                <ImagePlusIcon size={3} />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleSendChat}
-                disabled={
-                  !chatInput.trim() ||
-                  sendChatMutation.isPending ||
-                  isUploadingChatImages ||
-                  isStreamingReply
-                }
-              >
-                보내기
-              </Button>
-            </div>
+              <ImagePlusIcon size={3} />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSendChat}
+              disabled={
+                !chatInput.trim() ||
+                sendChatMutation.isPending ||
+                isUploadingChatImages ||
+                isStreamingReply
+              }
+            >
+              보내기
+            </Button>
           </div>
         </div>
       </CardContent>

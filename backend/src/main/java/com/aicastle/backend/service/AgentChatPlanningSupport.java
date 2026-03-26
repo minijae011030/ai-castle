@@ -1,11 +1,13 @@
 package com.aicastle.backend.service;
 
+import com.aicastle.backend.dto.AgentPlanningToolDtos.*;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.ApplyMode;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.RescheduleApplyRequest;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.ReschedulePlanItem;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.ReschedulePlanResponse;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.RescheduleSimulateRequest;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.RescheduleValidateRequest;
+import com.aicastle.backend.dto.ChatDtos.ChatMode;
 import com.aicastle.backend.dto.ChatDtos.NegotiationTodoRequestItem;
 import com.aicastle.backend.dto.ChatDtos.TodoItem;
 import com.aicastle.backend.dto.ChatDtos.TodoPriority;
@@ -192,6 +194,24 @@ public class AgentChatPlanningSupport {
         agentPlanningToolService.getUserConstraints(userId);
 
     try {
+      List<String> plannedCommands =
+          planTodoEnhancementCommands(
+              userMessage,
+              calendarEvents.size(),
+              existingTodos.size(),
+              agentTodos.size(),
+              contextStartDate,
+              contextEndDate);
+      Map<String, Object> enhancementResults =
+          executeTodoEnhancementCommands(
+              userId,
+              userMessage,
+              plannedCommands,
+              contextStartDate,
+              contextEndDate,
+              existingTodos,
+              agentTodos);
+
       String toolContextJson =
           objectMapper.writeValueAsString(
               Map.of(
@@ -210,7 +230,11 @@ public class AgentChatPlanningSupport {
                   "agentTodos",
                   agentTodos,
                   "userConstraints",
-                  constraints));
+                  constraints,
+                  "plannedCommands",
+                  plannedCommands,
+                  "enhancementResults",
+                  enhancementResults));
 
       List<Message> messages = new ArrayList<>();
       messages.add(new Message("system", systemPrompt));
@@ -229,6 +253,290 @@ public class AgentChatPlanningSupport {
       return openAiClient.createTodoJsonWithMessages(messages);
     } catch (Exception e) {
       throw new IllegalStateException("TODO 툴 루프 실행에 실패했습니다. " + e.getMessage());
+    }
+  }
+
+  public List<String> buildTodoProgressNotes(Long userId, Long agentId, String userMessage) {
+    LocalDate[] range = resolveDateRange(userMessage, List.of());
+    LocalDate[] lookupRange = resolveTodoLookupRange(userId, userMessage, range[0], range[1]);
+    String rangeLabel = formatRangeLabel(lookupRange[0], lookupRange[1]);
+    List<com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem> calendarEvents =
+        agentPlanningToolService.getCalendarEvents(userId, lookupRange[0], lookupRange[1]);
+    List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> existingTodos =
+        agentPlanningToolService.getTodos(userId, lookupRange[0], lookupRange[1], false);
+    List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> agentTodos =
+        agentPlanningToolService.getTodosByAgent(
+            userId, agentId, lookupRange[0], lookupRange[1], false);
+
+    List<String> notes = new ArrayList<>();
+    notes.add("요청에서 날짜 범위를 먼저 확인하고 있어요.");
+    notes.add(rangeLabel + "의 고정 일정을 확인하고 있어요.");
+    notes.add(rangeLabel + "의 기존 TODO를 확인하고 있어요.");
+    notes.add("에이전트 담당 TODO의 연속성과 우선순위를 분석하고 있어요.");
+    notes.add("사용자 시간 제약(dayStart/dayEnd)을 반영하고 있어요.");
+
+    List<String> plannedCommands =
+        planTodoEnhancementCommands(
+            userMessage,
+            calendarEvents.size(),
+            existingTodos.size(),
+            agentTodos.size(),
+            lookupRange[0],
+            lookupRange[1]);
+    notes.addAll(mapCommandNotes(plannedCommands));
+    notes.add("우선순위와 시간 충돌을 정리해서 추천안을 만들고 있어요.");
+    return notes;
+  }
+
+  private List<String> planTodoEnhancementCommands(
+      String userMessage,
+      int calendarEventCount,
+      int existingTodoCount,
+      int agentTodoCount,
+      LocalDate contextStartDate,
+      LocalDate contextEndDate) {
+    try {
+      List<Message> messages = new ArrayList<>();
+      messages.add(
+          new Message(
+              "system",
+              """
+              너는 TODO 계획 강화용 툴 실행 플래너다.
+              아래 커맨드 중 필요한 것만 순서대로 선택해 JSON으로만 반환하라.
+
+              [commands]
+              - rank_task_priority
+              - detect_overload
+              - estimate_task_effort
+              - split_task
+              - insert_buffer_blocks
+              - commute_aware_schedule
+              - deadline_risk_score
+              - explain_plan_brief
+
+              출력 스키마:
+              {"commands":["rank_task_priority","detect_overload"]}
+              """));
+      messages.add(
+          new Message(
+              "user",
+              objectMapper.writeValueAsString(
+                  Map.of(
+                      "userMessage",
+                      userMessage == null ? "" : userMessage,
+                      "calendarEventCount",
+                      calendarEventCount,
+                      "existingTodoCount",
+                      existingTodoCount,
+                      "agentTodoCount",
+                      agentTodoCount,
+                      "contextStartDate",
+                      contextStartDate.toString(),
+                      "contextEndDate",
+                      contextEndDate.toString()))));
+      String raw = openAiClient.createChatCompletionWithMessages(messages);
+      String json = extractJsonObject(raw);
+      if (json == null) return List.of("rank_task_priority", "detect_overload");
+      JsonNode root = objectMapper.readTree(json);
+      JsonNode commandsNode = root.path("commands");
+      if (!commandsNode.isArray() || commandsNode.isEmpty()) {
+        return List.of("rank_task_priority", "detect_overload");
+      }
+      List<String> commands = new ArrayList<>();
+      for (JsonNode node : commandsNode) {
+        String command = node.asText("");
+        if (command == null || command.isBlank()) continue;
+        commands.add(command.trim());
+      }
+      if (commands.isEmpty()) return List.of("rank_task_priority", "detect_overload");
+      log.info("🐰 [TODO_TOOL_LOOP] plannedCommands={}", commands);
+      return commands;
+    } catch (Exception e) {
+      log.warn(
+          "🐰 [TODO_TOOL_LOOP] command planning failed, fallback defaults. message={}",
+          e.getMessage());
+      return List.of("rank_task_priority", "detect_overload");
+    }
+  }
+
+  private Map<String, Object> executeTodoEnhancementCommands(
+      Long userId,
+      String userMessage,
+      List<String> commands,
+      LocalDate contextStartDate,
+      LocalDate contextEndDate,
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> existingTodos,
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> agentTodos) {
+    Map<String, Object> results = new java.util.LinkedHashMap<>();
+    List<PriorityRankItem> seedRankItems = new ArrayList<>();
+    List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> sourceTodos =
+        (agentTodos == null || agentTodos.isEmpty()) ? existingTodos : agentTodos;
+    for (com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem todo : sourceTodos) {
+      if (todo == null) continue;
+      int score = 50;
+      if (todo.title() != null && (todo.title().contains("시험") || todo.title().contains("기출")))
+        score += 20;
+      seedRankItems.add(new PriorityRankItem(todo.id(), todo.title(), "MEDIUM", score, "초기 점수"));
+    }
+    List<ReschedulePlanItem> scheduleItems = new ArrayList<>();
+    for (com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem todo : sourceTodos) {
+      if (todo == null || todo.startAt() == null || todo.endAt() == null) continue;
+      scheduleItems.add(
+          new ReschedulePlanItem(
+              todo.id(),
+              todo.title(),
+              todo.startAt(),
+              todo.endAt(),
+              todo.startAt(),
+              todo.endAt(),
+              "UNCHANGED",
+              "기존 일정"));
+    }
+
+    for (String command : commands) {
+      try {
+        switch (command) {
+          case "rank_task_priority" -> {
+            PriorityRankResponse ranked =
+                agentPlanningToolService.rankTaskPriority(
+                    new PriorityRankRequest(seedRankItems, userMessage));
+            results.put(command, ranked);
+          }
+          case "detect_overload" -> {
+            OverloadDetectResponse overload =
+                agentPlanningToolService.detectOverload(
+                    userId, new OverloadDetectRequest(contextStartDate, contextEndDate, 480, 120));
+            results.put(command, overload);
+          }
+          case "estimate_task_effort" -> {
+            String taskText = userMessage == null ? "" : userMessage;
+            if (!sourceTodos.isEmpty()
+                && sourceTodos.get(0) != null
+                && sourceTodos.get(0).title() != null) {
+              taskText = sourceTodos.get(0).title();
+            }
+            TaskEffortEstimateResponse estimate =
+                agentPlanningToolService.estimateTaskEffort(
+                    new TaskEffortEstimateRequest(taskText, "medium"));
+            results.put(command, estimate);
+          }
+          case "split_task" -> {
+            SplitTaskResponse split =
+                agentPlanningToolService.splitTask(
+                    new SplitTaskRequest("집중 학습", null, 120, 30, "balanced"));
+            results.put(command, split);
+          }
+          case "insert_buffer_blocks" -> {
+            BufferInsertResponse buffered =
+                agentPlanningToolService.insertBufferBlocks(
+                    new BufferInsertRequest(scheduleItems, 10, "standard"));
+            results.put(command, buffered);
+          }
+          case "commute_aware_schedule" -> {
+            CommuteAwareResponse commuteAware =
+                agentPlanningToolService.commuteAwareSchedule(
+                    new CommuteAwareRequest(scheduleItems, 20, null));
+            results.put(command, commuteAware);
+          }
+          case "deadline_risk_score" -> {
+            DeadlineRiskResponse risk =
+                agentPlanningToolService.getDeadlineRiskScore(
+                    new DeadlineRiskRequest("goal-default", 14));
+            results.put(command, risk);
+          }
+          case "explain_plan_brief" -> {
+            String brief =
+                agentPlanningToolService.explainPlanBrief(
+                    new ExplainBriefRequest("summary", "TODO 계획 강화 분석"));
+            results.put(command, brief);
+          }
+          default -> results.put(command, "unsupported_command");
+        }
+      } catch (Exception e) {
+        results.put(command, "error: " + e.getMessage());
+      }
+    }
+    return results;
+  }
+
+  private List<String> mapCommandNotes(List<String> commands) {
+    List<String> notes = new ArrayList<>();
+    for (String command : commands) {
+      String note =
+          switch (command) {
+            case "rank_task_priority" -> "우선순위 스코어를 계산하고 있어요.";
+            case "detect_overload" -> "하루 과부하 여부를 점검하고 있어요.";
+            case "estimate_task_effort" -> "작업 소요 시간을 추정하고 있어요.";
+            case "split_task" -> "긴 작업을 실행 가능한 블록으로 분할하고 있어요.";
+            case "insert_buffer_blocks" -> "집중 블록 사이 버퍼 시간을 삽입하고 있어요.";
+            case "commute_aware_schedule" -> "이동 시간을 고려해 충돌을 재확인하고 있어요.";
+            case "deadline_risk_score" -> "마감 리스크를 점검하고 있어요.";
+            case "explain_plan_brief" -> "계획 요약 문구를 정리하고 있어요.";
+            default -> null;
+          };
+      if (note != null) notes.add(note);
+    }
+    return notes;
+  }
+
+  public ChatMode routeChatMode(
+      String userMessage,
+      List<String> imageUrls,
+      List<NegotiationTodoRequestItem> negotiationTodos) {
+    if (negotiationTodos != null && !negotiationTodos.isEmpty()) {
+      return ChatMode.TODO_NEGOTIATION;
+    }
+    if (imageUrls != null && !imageUrls.isEmpty()) {
+      return ChatMode.CHAT;
+    }
+    try {
+      List<Message> messages = new ArrayList<>();
+      messages.add(
+          new Message(
+              "system",
+              """
+              너는 채팅 라우팅 에이전트다.
+              아래 실행 가능한 커맨드 중 하나를 선택해 JSON으로만 답하라.
+
+              [commands]
+              - route_chat(reason)
+              - route_todo_create(reason)
+              - route_todo_negotiate(reason)
+
+              출력 스키마:
+              {
+                "commands": [
+                  { "name": "route_chat" | "route_todo_create" | "route_todo_negotiate", "reason": "string" }
+                ],
+                "confidence": 0.0
+              }
+              """));
+      messages.add(new Message("user", userMessage == null ? "" : userMessage));
+
+      String rawPlan = openAiClient.createChatCompletionWithMessages(messages);
+      String planJson = extractJsonObject(rawPlan);
+      if (planJson == null) return ChatMode.CHAT;
+      JsonNode root = objectMapper.readTree(planJson);
+      String commandName = root.path("commands").path(0).path("name").asText("");
+      String reason = root.path("commands").path(0).path("reason").asText("");
+      double confidence = root.path("confidence").asDouble(0.0);
+
+      ChatMode routedMode =
+          switch (commandName) {
+            case "route_todo_create" -> ChatMode.TODO;
+            case "route_todo_negotiate" -> ChatMode.TODO_NEGOTIATION;
+            default -> ChatMode.CHAT;
+          };
+      log.info(
+          "🐰 [CHAT_MODE_ROUTER] command={}, routedMode={}, confidence={}, reason={}",
+          commandName,
+          routedMode,
+          confidence,
+          reason);
+      return routedMode;
+    } catch (Exception e) {
+      log.warn("🐰 [CHAT_MODE_ROUTER] failed, fallback CHAT. message={}", e.getMessage());
+      return ChatMode.CHAT;
     }
   }
 

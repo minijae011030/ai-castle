@@ -182,7 +182,12 @@ public class AgentChatService {
         request.negotiationTodos() == null ? List.of() : request.negotiationTodos();
     String preferredDeadlineDate =
         request.preferredDeadlineDate() == null ? "" : request.preferredDeadlineDate().trim();
-    ChatMode mode = request.mode();
+    ChatMode mode =
+        resolveAgentChatMode(
+            request.mode(),
+            content,
+            imageUrls,
+            request.negotiationTodos() == null ? List.of() : request.negotiationTodos());
 
     UserAccount user =
         userAccountRepository
@@ -243,15 +248,7 @@ public class AgentChatService {
             agentChatPlanningSupport.runNegotiationToolLoop(
                 userId, content, negotiationTodos, preferredDeadlineDate);
       } else if (mode == ChatMode.TODO) {
-        progressNotes =
-            List.of(
-                "요청한 날짜 범위를 확인했어요.",
-                "해당 기간의 고정 일정을 확인했어요.",
-                "해당 기간의 기존 TODO를 확인했어요.",
-                "에이전트 담당 TODO의 연속성을 확인했어요.",
-                "사용자 시간 제약(dayStart/dayEnd)을 확인했어요.",
-                "우선순위와 시간 충돌을 정리했어요.",
-                "실행 가능한 추천안을 만들었어요.");
+        progressNotes = agentChatPlanningSupport.buildTodoProgressNotes(userId, agentId, content);
         reply = agentChatPlanningSupport.runTodoToolLoop(userId, agentId, content, systemPrompt);
       } else {
         List<Message> messages = new ArrayList<>();
@@ -349,7 +346,17 @@ public class AgentChatService {
       }
 
       List<String> imageUrls = request.imageUrls() == null ? List.of() : request.imageUrls();
-      ChatMode mode = request.mode();
+      List<NegotiationTodoRequestItem> negotiationTodosForRouting =
+          request.negotiationTodos() == null ? List.of() : request.negotiationTodos();
+      ChatMode mode =
+          resolveAgentChatMode(request.mode(), content, imageUrls, negotiationTodosForRouting);
+      ChatSendRequest normalizedRequest =
+          new ChatSendRequest(
+              content,
+              mode,
+              imageUrls,
+              negotiationTodosForRouting,
+              request.preferredDeadlineDate());
 
       // TODO/협상/이미지 모드는 스트리밍 복잡도가 높아 기존 방식으로 처리 (1회만 내려줌)
       boolean canStream = mode == ChatMode.CHAT && (imageUrls == null || imageUrls.isEmpty());
@@ -360,25 +367,13 @@ public class AgentChatService {
           imageUrls == null ? 0 : imageUrls.size());
       if (!canStream) {
         if (mode == ChatMode.TODO) {
-          LocalDate[] range = agentChatPlanningSupport.resolveDateRange(content, List.of());
-          LocalDate[] lookupRange =
-              agentChatPlanningSupport.resolveTodoLookupRange(userId, content, range[0], range[1]);
-          String rangeLabel =
-              agentChatPlanningSupport.formatRangeLabel(lookupRange[0], lookupRange[1]);
-          writeNdjson(emitter, Map.of("type", "delta", "text", "요청에서 날짜 범위를 먼저 확인하고 있어요.\n"));
-          writeNdjson(
-              emitter, Map.of("type", "delta", "text", rangeLabel + "의 고정 일정을 확인하고 있어요.\n"));
-          writeNdjson(
-              emitter, Map.of("type", "delta", "text", rangeLabel + "의 기존 TODO를 확인하고 있어요.\n"));
-          writeNdjson(
-              emitter, Map.of("type", "delta", "text", "에이전트 담당 TODO의 연속성과 우선순위를 분석하고 있어요.\n"));
-          writeNdjson(
-              emitter, Map.of("type", "delta", "text", "사용자 시간 제약(dayStart/dayEnd)을 반영하고 있어요.\n"));
-          writeNdjson(
-              emitter, Map.of("type", "delta", "text", "우선순위와 시간 충돌을 정리해서 추천안을 만들고 있어요.\n"));
+          List<String> progressNotes =
+              agentChatPlanningSupport.buildTodoProgressNotes(userId, agentId, content);
+          for (String progressNote : progressNotes) {
+            writeNdjson(emitter, Map.of("type", "delta", "text", progressNote + "\n"));
+          }
         } else if (mode == ChatMode.TODO_NEGOTIATION) {
-          List<NegotiationTodoRequestItem> negotiationTodos =
-              request.negotiationTodos() == null ? List.of() : request.negotiationTodos();
+          List<NegotiationTodoRequestItem> negotiationTodos = negotiationTodosForRouting;
           LocalDate[] range = agentChatPlanningSupport.resolveDateRange(content, negotiationTodos);
           String rangeLabel = agentChatPlanningSupport.formatRangeLabel(range[0], range[1]);
           writeNdjson(
@@ -386,7 +381,7 @@ public class AgentChatService {
           writeNdjson(emitter, Map.of("type", "delta", "text", "고정 일정과 기존 TODO의 충돌을 분석하고 있어요.\n"));
           writeNdjson(emitter, Map.of("type", "delta", "text", "재배치 초안을 만들고 검증하고 있어요.\n"));
         }
-        ChatMessageResponse data = sendMessage(userId, agentId, request);
+        ChatMessageResponse data = sendMessage(userId, agentId, normalizedRequest);
         log.info(
             "[CHAT_STREAM] non-stream mode fallback sendMessage success messageId={}", data.id());
         writeNdjson(emitter, Map.of("type", "final", "message", data));
@@ -558,10 +553,20 @@ public class AgentChatService {
       }
 
       List<String> imageUrls = request.imageUrls() == null ? List.of() : request.imageUrls();
-      ChatMode mode = request.mode();
+      List<NegotiationTodoRequestItem> negotiationTodosForRouting =
+          request.negotiationTodos() == null ? List.of() : request.negotiationTodos();
+      ChatMode mode =
+          resolveAgentChatMode(request.mode(), content, imageUrls, negotiationTodosForRouting);
+      ChatSendRequest normalizedRequest =
+          new ChatSendRequest(
+              content,
+              mode,
+              imageUrls,
+              negotiationTodosForRouting,
+              request.preferredDeadlineDate());
       boolean canStream = mode == ChatMode.CHAT && (imageUrls == null || imageUrls.isEmpty());
       if (!canStream) {
-        onFinal.accept(sendMessage(userId, agentId, request));
+        onFinal.accept(sendMessage(userId, agentId, normalizedRequest));
         return;
       }
 
@@ -794,6 +799,15 @@ public class AgentChatService {
     } catch (Exception ignored) {
       return ChatMessage.Mode.CHAT;
     }
+  }
+
+  private ChatMode resolveAgentChatMode(
+      ChatMode requestedMode,
+      String content,
+      List<String> imageUrls,
+      List<NegotiationTodoRequestItem> negotiationTodos) {
+    if (requestedMode != null) return requestedMode;
+    return agentChatPlanningSupport.routeChatMode(content, imageUrls, negotiationTodos);
   }
 
   private String toImageUrlsJson(List<String> imageUrls) {

@@ -1,7 +1,6 @@
 package com.aicastle.backend.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.List;
 
@@ -64,7 +63,7 @@ public class ChatDtos {
 
   public record ChatSendRequest(
       @NotBlank String content,
-      @NotNull ChatMode mode,
+      ChatMode mode,
       // 이미지 첨부는 선택 사항 (VISION용 URL만 프론트 -> 백엔드로 전달)
       List<String> imageUrls,
       // 조정 요청 모드에서 선택한 TODO 컨텍스트

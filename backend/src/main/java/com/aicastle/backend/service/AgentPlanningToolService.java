@@ -1,5 +1,6 @@
 package com.aicastle.backend.service;
 
+import com.aicastle.backend.dto.AgentPlanningToolDtos.*;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.ApplyMode;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.RescheduleApplyRequest;
@@ -461,6 +462,290 @@ public class AgentPlanningToolService {
         unchangedCount,
         conflictCount);
     return explanation;
+  }
+
+  @Transactional(readOnly = true)
+  public TimePreferenceResponse resolveTimePreference(Long userId, TimePreferenceRequest request) {
+    UserConstraintResponse constraints = getUserConstraints(userId);
+    int sleepDebtMinutes =
+        request == null || request.sleepDebtMinutes() == null
+            ? 0
+            : Math.max(0, request.sleepDebtMinutes());
+    String baseWindow =
+        request == null || request.window() == null ? "MORNING" : request.window().toUpperCase();
+    String recommendedWindow = sleepDebtMinutes >= 120 ? "AFTERNOON" : baseWindow;
+    String intensityAdjustment = sleepDebtMinutes >= 120 ? "LIGHTEN" : "KEEP";
+    String reason =
+        "dayStart="
+            + constraints.dayStartTime()
+            + ", dayEnd="
+            + constraints.dayEndTime()
+            + ", sleepDebtMinutes="
+            + sleepDebtMinutes;
+    log.info(
+        "❤️ [TOOL:resolve_time_preference] userId={}, recommendedWindow={}",
+        userId,
+        recommendedWindow);
+    return new TimePreferenceResponse(recommendedWindow, intensityAdjustment, reason);
+  }
+
+  @Transactional(readOnly = true)
+  public EnergyCurveResponse getEnergyCurve(Long userId, EnergyCurveRequest request) {
+    validateDateRange(request.startDate(), request.endDate());
+    List<EnergyCurveItem> items = new ArrayList<>();
+    for (LocalDate date = request.startDate();
+        !date.isAfter(request.endDate());
+        date = date.plusDays(1)) {
+      String peakWindow =
+          switch (date.getDayOfWeek()) {
+            case SATURDAY, SUNDAY -> "10:00-12:00";
+            default -> "09:00-11:00";
+          };
+      items.add(new EnergyCurveItem(date, peakWindow, "14:00-16:00"));
+    }
+    log.info("❤️ [TOOL:get_energy_curve] userId={}, days={}", userId, items.size());
+    return new EnergyCurveResponse(items);
+  }
+
+  public TaskEffortEstimateResponse estimateTaskEffort(TaskEffortEstimateRequest request) {
+    log.info("❤️ [TOOL:estimate_task_effort] request={}", request);
+    String text = request == null || request.taskText() == null ? "" : request.taskText();
+    String level =
+        request == null || request.userLevel() == null
+            ? "medium"
+            : request.userLevel().toLowerCase();
+    int base = text.length() >= 40 ? 60 : 40;
+    if (text.contains("모의") || text.contains("기출")) base += 20;
+    if ("beginner".equals(level)) base += 20;
+    if ("advanced".equals(level)) base -= 10;
+    int estimated = Math.max(20, base);
+    TaskEffortEstimateResponse response =
+        new TaskEffortEstimateResponse(estimated, "taskLength/keyword/userLevel 기반 추정");
+    log.info("❤️ [TOOL:estimate_task_effort] response={}", response);
+    return response;
+  }
+
+  public SplitTaskResponse splitTask(SplitTaskRequest request) {
+    log.info("❤️ [TOOL:split_task] request={}", request);
+    int total =
+        request == null || request.totalMinutes() == null
+            ? 60
+            : Math.max(10, request.totalMinutes());
+    int block =
+        request == null || request.blockMinutes() == null
+            ? 30
+            : Math.max(10, request.blockMinutes());
+    String title = request == null || request.title() == null ? "작업" : request.title();
+    List<SplitTaskItem> items = new ArrayList<>();
+    int remaining = total;
+    int index = 1;
+    while (remaining > 0) {
+      int minutes = Math.min(block, remaining);
+      items.add(new SplitTaskItem(title + " - " + index + "단계", minutes, "집중 블록"));
+      remaining -= minutes;
+      index++;
+    }
+    SplitTaskResponse response = new SplitTaskResponse(items);
+    log.info("❤️ [TOOL:split_task] splitCount={}", items.size());
+    return response;
+  }
+
+  public PriorityRankResponse rankTaskPriority(PriorityRankRequest request) {
+    log.info(
+        "❤️ [TOOL:rank_task_priority] requestSize={}",
+        request == null || request.items() == null ? 0 : request.items().size());
+    List<PriorityRankItem> items =
+        request == null || request.items() == null
+            ? new ArrayList<>()
+            : new ArrayList<>(request.items());
+    items.sort(
+        (a, b) ->
+            Integer.compare(b.score() == null ? 0 : b.score(), a.score() == null ? 0 : a.score()));
+    PriorityRankResponse response = new PriorityRankResponse(items);
+    log.info("❤️ [TOOL:rank_task_priority] rankedSize={}", items.size());
+    return response;
+  }
+
+  @Transactional(readOnly = true)
+  public OverloadDetectResponse detectOverload(Long userId, OverloadDetectRequest request) {
+    validateDateRange(request.startDate(), request.endDate());
+    int maxDaily =
+        request.maxDailyMinutes() == null ? 480 : Math.max(60, request.maxDailyMinutes());
+    List<TodoItem> todos = getTodos(userId, request.startDate(), request.endDate(), false);
+    Map<LocalDate, Integer> totalMinutesByDate = new HashMap<>();
+    for (TodoItem todo : todos) {
+      LocalDate date = todo.date();
+      if (date == null && todo.startAt() != null) date = todo.startAt().toLocalDate();
+      if (date == null) continue;
+      int minutes = 0;
+      if (todo.startAt() != null && todo.endAt() != null) {
+        minutes = (int) Math.max(0, Duration.between(todo.startAt(), todo.endAt()).toMinutes());
+      }
+      totalMinutesByDate.put(date, totalMinutesByDate.getOrDefault(date, 0) + minutes);
+    }
+
+    List<OverloadDay> days = new ArrayList<>();
+    boolean overloaded = false;
+    for (LocalDate date = request.startDate();
+        !date.isAfter(request.endDate());
+        date = date.plusDays(1)) {
+      int total = totalMinutesByDate.getOrDefault(date, 0);
+      boolean dayOverloaded = total > maxDaily;
+      if (dayOverloaded) overloaded = true;
+      days.add(new OverloadDay(date, total, dayOverloaded, dayOverloaded ? "일일 한도 초과" : "정상"));
+    }
+    return new OverloadDetectResponse(overloaded, days);
+  }
+
+  public BufferInsertResponse insertBufferBlocks(BufferInsertRequest request) {
+    log.info("❤️ [TOOL:insert_buffer_blocks] request={}", request);
+    int bufferMinutes =
+        request == null || request.bufferMinutes() == null
+            ? 10
+            : Math.max(0, request.bufferMinutes());
+    if (request == null || request.items() == null) return new BufferInsertResponse(List.of());
+    List<ReschedulePlanItem> adjusted = new ArrayList<>();
+    LocalDateTime nextStartFloor = null;
+    for (ReschedulePlanItem item : request.items()) {
+      if (item.proposedStartAt() == null || item.proposedEndAt() == null) {
+        adjusted.add(item);
+        continue;
+      }
+      LocalDateTime start = item.proposedStartAt();
+      LocalDateTime end = item.proposedEndAt();
+      if (nextStartFloor != null && start.isBefore(nextStartFloor)) {
+        long duration = Math.max(5, Duration.between(start, end).toMinutes());
+        start = nextStartFloor;
+        end = start.plusMinutes(duration);
+      }
+      adjusted.add(
+          new ReschedulePlanItem(
+              item.todoId(),
+              item.title(),
+              item.originalStartAt(),
+              item.originalEndAt(),
+              start,
+              end,
+              item.status(),
+              item.reason()));
+      nextStartFloor = end.plusMinutes(bufferMinutes);
+    }
+    BufferInsertResponse response = new BufferInsertResponse(adjusted);
+    log.info("❤️ [TOOL:insert_buffer_blocks] adjustedCount={}", adjusted.size());
+    return response;
+  }
+
+  public CommuteAwareResponse commuteAwareSchedule(CommuteAwareRequest request) {
+    log.info("❤️ [TOOL:commute_aware_schedule] request={}", request);
+    int commuteMinutes =
+        request == null || request.commuteMinutes() == null
+            ? 20
+            : Math.max(0, request.commuteMinutes());
+    if (request == null || request.items() == null) {
+      return new CommuteAwareResponse(List.of(), List.of());
+    }
+    List<String> conflicts = new ArrayList<>();
+    List<ReschedulePlanItem> adjusted = new ArrayList<>();
+    LocalDateTime prevEnd = null;
+    for (ReschedulePlanItem item : request.items()) {
+      if (item.proposedStartAt() == null || item.proposedEndAt() == null) {
+        adjusted.add(item);
+        continue;
+      }
+      if (prevEnd != null && item.proposedStartAt().isBefore(prevEnd.plusMinutes(commuteMinutes))) {
+        conflicts.add("TODO #" + item.todoId() + " 이동 시간 부족");
+      }
+      adjusted.add(item);
+      prevEnd = item.proposedEndAt();
+    }
+    CommuteAwareResponse response = new CommuteAwareResponse(conflicts, adjusted);
+    log.info("❤️ [TOOL:commute_aware_schedule] conflictCount={}", conflicts.size());
+    return response;
+  }
+
+  public DeadlineRiskResponse getDeadlineRiskScore(DeadlineRiskRequest request) {
+    log.info("❤️ [TOOL:deadline_risk_score] request={}", request);
+    int horizonDays =
+        request == null || request.horizonDays() == null ? 14 : Math.max(1, request.horizonDays());
+    int riskScore = horizonDays <= 3 ? 90 : horizonDays <= 7 ? 70 : horizonDays <= 14 ? 45 : 20;
+    String riskLevel = riskScore >= 80 ? "HIGH" : riskScore >= 50 ? "MEDIUM" : "LOW";
+    DeadlineRiskResponse response =
+        new DeadlineRiskResponse(
+            request == null ? "unknown" : request.goalId(),
+            riskScore,
+            riskLevel,
+            "horizonDays 기반 단순 리스크 추정");
+    log.info("❤️ [TOOL:deadline_risk_score] response={}", response);
+    return response;
+  }
+
+  public NegotiationOptionsResponse suggestNegotiationOptions(List<ReschedulePlanItem> items) {
+    log.info(
+        "❤️ [TOOL:suggest_negotiation_options] inputSize={}", items == null ? 0 : items.size());
+    List<ReschedulePlanItem> safeItems = items == null ? List.of() : items;
+    List<NegotiationOption> options =
+        List.of(
+            new NegotiationOption("볼륨 축소", "총 작업량을 20% 줄이는 안", safeItems),
+            new NegotiationOption("기한 연장", "중요도 낮은 항목을 1~2일 뒤로 이동", safeItems),
+            new NegotiationOption("블록 분할", "긴 작업을 여러 블록으로 분할", safeItems));
+    NegotiationOptionsResponse response = new NegotiationOptionsResponse(options);
+    log.info("❤️ [TOOL:suggest_negotiation_options] optionCount={}", options.size());
+    return response;
+  }
+
+  @Transactional
+  public ApplySafeguardResponse applyWithSafeguard(Long userId, ApplySafeguardRequest request) {
+    log.info("❤️ [TOOL:apply_with_safeguard] userId={}, request={}", userId, request);
+    List<ReschedulePlanItem> items =
+        request == null || request.items() == null ? List.of() : request.items();
+    if (request != null && request.dryRun()) {
+      List<String> diff =
+          items.stream()
+              .map(
+                  item ->
+                      "TODO #"
+                          + item.todoId()
+                          + ": "
+                          + item.originalStartAt()
+                          + " -> "
+                          + item.proposedStartAt())
+              .toList();
+      ApplySafeguardResponse response = new ApplySafeguardResponse(true, items.size(), diff, items);
+      log.info("❤️ [TOOL:apply_with_safeguard] dryRun impactedCount={}", response.impactedCount());
+      return response;
+    }
+    RescheduleApplyResponse applied =
+        applyPlan(userId, new RescheduleApplyRequest(ApplyMode.COMMIT, items));
+    List<String> diff =
+        applied.appliedItems().stream()
+            .map(
+                item ->
+                    "TODO #"
+                        + item.todoId()
+                        + ": "
+                        + item.originalStartAt()
+                        + " -> "
+                        + item.proposedStartAt())
+            .toList();
+    ApplySafeguardResponse response =
+        new ApplySafeguardResponse(false, applied.appliedCount(), diff, applied.appliedItems());
+    log.info("❤️ [TOOL:apply_with_safeguard] commit impactedCount={}", response.impactedCount());
+    return response;
+  }
+
+  public String explainPlanBrief(ExplainBriefRequest request) {
+    log.info("❤️ [TOOL:explain_plan_brief] request={}", request);
+    String text = request == null || request.text() == null ? "" : request.text();
+    String style =
+        request == null || request.style() == null ? "summary" : request.style().toLowerCase();
+    String response =
+        switch (style) {
+          case "reason" -> "근거 중심 요약: " + text;
+          case "motivation" -> "동기부여 요약: 오늘도 충분히 해낼 수 있습니다. " + text;
+          default -> "요약: " + text;
+        };
+    log.info("❤️ [TOOL:explain_plan_brief] response={}", response);
+    return response;
   }
 
   private TodoItem toTodoItem(ScheduleOccurrence todo) {

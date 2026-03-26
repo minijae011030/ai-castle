@@ -122,7 +122,7 @@ export const useSendAgentChatMessage = (
       const userMessage: ChatMessageInterface = {
         id: `local-user-${now}-${Math.random().toString(16).slice(2)}`,
         role: 'USER',
-        mode: variables.mode,
+        mode: variables.mode ?? 'CHAT',
         content: variables.content,
         createdAt: now,
         imageUrls: variables.imageUrls ?? null,

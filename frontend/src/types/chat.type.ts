@@ -35,7 +35,7 @@ export interface MainChatHistoryResponseInterface {
 
 export interface MainChatSendBodyInterface {
   content: string
-  mode: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
+  mode?: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
   imageUrls?: string[]
   negotiationTodos?: NegotiationTodoRequestItemInterface[]
   preferredDeadlineDate?: string
@@ -61,7 +61,7 @@ export interface AgentChatHistoryPageDataInterface {
 
 export interface AgentChatSendBodyInterface {
   content: string
-  mode: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
+  mode?: 'CHAT' | 'TODO' | 'TODO_NEGOTIATION'
   imageUrls?: string[]
   negotiationTodos?: NegotiationTodoRequestItemInterface[]
   preferredDeadlineDate?: string

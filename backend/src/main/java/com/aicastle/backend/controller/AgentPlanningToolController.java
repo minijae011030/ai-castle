@@ -1,5 +1,6 @@
 package com.aicastle.backend.controller;
 
+import com.aicastle.backend.dto.AgentPlanningToolDtos.*;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.DateRangeRequest;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.RescheduleApplyRequest;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.RescheduleApplyResponse;
@@ -108,5 +109,93 @@ public class AgentPlanningToolController {
       @RequestBody RescheduleExplainRequest request) {
     String data = agentPlanningToolService.explainPlan(request);
     return ResponseEntity.ok(ResultResponse.success(data));
+  }
+
+  @PostMapping("/time-preference")
+  public ResponseEntity<ResultResponse<TimePreferenceResponse>> resolveTimePreference(
+      @RequestBody TimePreferenceRequest request) {
+    Long userId = getUserId();
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.resolveTimePreference(userId, request)));
+  }
+
+  @PostMapping("/energy-curve")
+  public ResponseEntity<ResultResponse<EnergyCurveResponse>> getEnergyCurve(
+      @RequestBody EnergyCurveRequest request) {
+    Long userId = getUserId();
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.getEnergyCurve(userId, request)));
+  }
+
+  @PostMapping("/task-effort")
+  public ResponseEntity<ResultResponse<TaskEffortEstimateResponse>> estimateTaskEffort(
+      @RequestBody TaskEffortEstimateRequest request) {
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.estimateTaskEffort(request)));
+  }
+
+  @PostMapping("/split-task")
+  public ResponseEntity<ResultResponse<SplitTaskResponse>> splitTask(
+      @RequestBody SplitTaskRequest request) {
+    return ResponseEntity.ok(ResultResponse.success(agentPlanningToolService.splitTask(request)));
+  }
+
+  @PostMapping("/rank-priority")
+  public ResponseEntity<ResultResponse<PriorityRankResponse>> rankTaskPriority(
+      @RequestBody PriorityRankRequest request) {
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.rankTaskPriority(request)));
+  }
+
+  @PostMapping("/detect-overload")
+  public ResponseEntity<ResultResponse<OverloadDetectResponse>> detectOverload(
+      @RequestBody OverloadDetectRequest request) {
+    Long userId = getUserId();
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.detectOverload(userId, request)));
+  }
+
+  @PostMapping("/insert-buffer")
+  public ResponseEntity<ResultResponse<BufferInsertResponse>> insertBuffer(
+      @RequestBody BufferInsertRequest request) {
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.insertBufferBlocks(request)));
+  }
+
+  @PostMapping("/commute-aware")
+  public ResponseEntity<ResultResponse<CommuteAwareResponse>> commuteAware(
+      @RequestBody CommuteAwareRequest request) {
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.commuteAwareSchedule(request)));
+  }
+
+  @PostMapping("/deadline-risk")
+  public ResponseEntity<ResultResponse<DeadlineRiskResponse>> deadlineRisk(
+      @RequestBody DeadlineRiskRequest request) {
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.getDeadlineRiskScore(request)));
+  }
+
+  @PostMapping("/negotiation-options")
+  public ResponseEntity<ResultResponse<NegotiationOptionsResponse>> negotiationOptions(
+      @RequestBody RescheduleValidateRequest request) {
+    return ResponseEntity.ok(
+        ResultResponse.success(
+            agentPlanningToolService.suggestNegotiationOptions(request.items())));
+  }
+
+  @PostMapping("/apply-with-safeguard")
+  public ResponseEntity<ResultResponse<ApplySafeguardResponse>> applyWithSafeguard(
+      @RequestBody ApplySafeguardRequest request) {
+    Long userId = getUserId();
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.applyWithSafeguard(userId, request)));
+  }
+
+  @PostMapping("/explain-brief")
+  public ResponseEntity<ResultResponse<String>> explainBrief(
+      @RequestBody ExplainBriefRequest request) {
+    return ResponseEntity.ok(
+        ResultResponse.success(agentPlanningToolService.explainPlanBrief(request)));
   }
 }
