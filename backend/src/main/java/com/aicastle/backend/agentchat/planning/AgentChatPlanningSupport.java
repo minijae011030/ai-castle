@@ -1,5 +1,9 @@
-package com.aicastle.backend.service;
+package com.aicastle.backend.agentchat.planning;
 
+import com.aicastle.backend.agentchat.policy.EnhancementCommandPolicy;
+import com.aicastle.backend.agentchat.postprocess.TodoNarrativePostProcessor;
+import com.aicastle.backend.agentchat.prompt.AgentPromptTemplates;
+import com.aicastle.backend.agentchat.time.TimeInterpretationService;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.*;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.ApplyMode;
 import com.aicastle.backend.dto.AgentPlanningToolDtos.RescheduleApplyRequest;
@@ -14,16 +18,15 @@ import com.aicastle.backend.dto.ChatDtos.TodoPriority;
 import com.aicastle.backend.dto.ChatDtos.TodoStatus;
 import com.aicastle.backend.openai.OpenAiChatDtos.Message;
 import com.aicastle.backend.openai.OpenAiClient;
+import com.aicastle.backend.service.AgentPlanningToolService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -48,6 +51,9 @@ public class AgentChatPlanningSupport {
   private final AgentPlanningToolService agentPlanningToolService;
   private final OpenAiClient openAiClient;
   private final ObjectMapper objectMapper;
+  private final EnhancementCommandPolicy enhancementCommandPolicy;
+  private final TimeInterpretationService timeInterpretationService;
+  private final TodoNarrativePostProcessor todoNarrativePostProcessor;
   private final ConcurrentHashMap<String, CachedExamInference> examInferenceCache =
       new ConcurrentHashMap<>();
   private final ConcurrentHashMap<String, CachedTodoPlanningSummary> todoPlanningSummaryCache =
@@ -56,10 +62,16 @@ public class AgentChatPlanningSupport {
   public AgentChatPlanningSupport(
       AgentPlanningToolService agentPlanningToolService,
       OpenAiClient openAiClient,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      EnhancementCommandPolicy enhancementCommandPolicy,
+      TimeInterpretationService timeInterpretationService,
+      TodoNarrativePostProcessor todoNarrativePostProcessor) {
     this.agentPlanningToolService = agentPlanningToolService;
     this.openAiClient = openAiClient;
     this.objectMapper = objectMapper;
+    this.enhancementCommandPolicy = enhancementCommandPolicy;
+    this.timeInterpretationService = timeInterpretationService;
+    this.todoNarrativePostProcessor = todoNarrativePostProcessor;
   }
 
   public String buildNegotiationContext(
@@ -252,7 +264,7 @@ public class AgentChatPlanningSupport {
 
     try {
       boolean skipEnhancementPlanning =
-          shouldSkipTodoEnhancementPlanning(
+          enhancementCommandPolicy.shouldSkipTodoEnhancementPlanning(
               userMessage, calendarEvents.size(), existingTodos.size(), agentTodos.size());
       if (skipEnhancementPlanning) {
         emitProgress(progressEmitter, "요청이 단순해 플래닝 단계를 축약하고 있어요.");
@@ -270,10 +282,10 @@ public class AgentChatPlanningSupport {
                   contextStartDate,
                   contextEndDate);
       int commandLimit =
-          resolveEnhancementCommandLimit(
+          enhancementCommandPolicy.resolveEnhancementCommandLimit(
               userMessage, calendarEvents.size(), existingTodos.size(), agentTodos.size());
       List<String> normalizedPlannedCommands =
-          sanitizePlannedCommands(plannedCommands, commandLimit);
+          enhancementCommandPolicy.sanitizePlannedCommands(plannedCommands, commandLimit);
       log.info(
           "❤️ [에이전트 TODO] 강화 커맨드 최적화 skip={}, commandLimit={}, rawCommands={}, normalizedCommands={}",
           skipEnhancementPlanning,
@@ -318,7 +330,7 @@ public class AgentChatPlanningSupport {
                   "enhancementResults",
                   enhancementResults));
       String timeInterpretationHint =
-          buildTimeInterpretationHint(
+          timeInterpretationService.buildTimeInterpretationHint(
               userMessage, calendarEvents, contextStartDate, contextEndDate);
 
       cacheTodoPlanningSummary(
@@ -350,338 +362,11 @@ public class AgentChatPlanningSupport {
 
       emitProgress(progressEmitter, "우선순위와 시간 충돌을 정리해서 추천안을 만들고 있어요.");
       String rawTodoResponse = openAiClient.createTodoJsonWithMessages(messages);
-      return postProcessTodoNarrativeByEventContext(rawTodoResponse, userMessage, calendarEvents);
+      return todoNarrativePostProcessor.postProcessTodoNarrativeByEventContext(
+          rawTodoResponse, userMessage, calendarEvents);
     } catch (Exception e) {
       throw new IllegalStateException("TODO 툴 루프 실행에 실패했습니다. " + e.getMessage());
     }
-  }
-
-  private String postProcessTodoNarrativeByEventContext(
-      String rawTodoResponse,
-      String userMessage,
-      List<com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem> calendarEvents) {
-    if (rawTodoResponse == null || rawTodoResponse.isBlank()) return rawTodoResponse;
-    if (calendarEvents == null || calendarEvents.isEmpty()) return rawTodoResponse;
-    try {
-      JsonNode root = objectMapper.readTree(rawTodoResponse);
-      JsonNode textNode = root.path("text");
-      JsonNode todoNode = root.path("todo");
-      if (!textNode.isTextual() || !todoNode.isArray() || todoNode.isEmpty())
-        return rawTodoResponse;
-
-      JsonNode firstTodo = todoNode.get(0);
-      String todoStartAtRaw = firstTodo.path("startAt").asText("");
-      if (todoStartAtRaw.isBlank()) return rawTodoResponse;
-      LocalDateTime todoStartAt = LocalDateTime.parse(todoStartAtRaw);
-
-      com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem matchedEvent =
-          findBestMatchedEvent(userMessage, firstTodo, todoStartAt, calendarEvents);
-      if (matchedEvent == null || matchedEvent.startAt() == null || matchedEvent.endAt() == null) {
-        return rawTodoResponse;
-      }
-      LocalDateTime normalizedTodoStartAt =
-          normalizeTodoTimeByEventContext(firstTodo, matchedEvent, userMessage);
-
-      String originalText = textNode.asText("");
-      if (originalText.isBlank()) return rawTodoResponse;
-      String normalizedLabel = buildEventLabel(matchedEvent);
-      RelationToEvent relation =
-          determineRelationToEvent(
-              normalizedTodoStartAt, matchedEvent.startAt(), matchedEvent.endAt());
-      String rewrittenText =
-          rewriteNarrativeByRelation(
-              originalText,
-              normalizedLabel,
-              relation,
-              matchedEvent.startAt(),
-              matchedEvent.endAt());
-      String alignedText =
-          alignNarrativeHourExpression(
-              rewrittenText, userMessage, normalizedTodoStartAt.toLocalTime().getHour(), relation);
-      boolean todoFieldsChanged = rewriteTodoFieldsByRelation(todoNode, normalizedLabel, relation);
-      boolean timeAdjusted = !normalizedTodoStartAt.equals(todoStartAt);
-      if (alignedText.equals(originalText) && !todoFieldsChanged && !timeAdjusted)
-        return rawTodoResponse;
-
-      ((com.fasterxml.jackson.databind.node.ObjectNode) root).put("text", alignedText);
-      return objectMapper.writeValueAsString(root);
-    } catch (Exception ignored) {
-      return rawTodoResponse;
-    }
-  }
-
-  private String alignNarrativeHourExpression(
-      String text, String userMessage, int actualStartHour, RelationToEvent relation) {
-    if (text == null || text.isBlank()) return text;
-    if (userMessage == null || userMessage.isBlank()) return text;
-    Matcher userHourMatcher = Pattern.compile("(\\d{1,2})\\s*시").matcher(userMessage.toLowerCase());
-    if (!userHourMatcher.find()) return text;
-    int mentionedHour;
-    try {
-      mentionedHour = Integer.parseInt(userHourMatcher.group(1));
-    } catch (Exception ignored) {
-      return text;
-    }
-    if (mentionedHour < 1 || mentionedHour > 12) return text;
-    int normalizedActualHour = actualStartHour;
-    if (relation == RelationToEvent.DURING && normalizedActualHour >= 12 && mentionedHour <= 11) {
-      // 모호한 8시/9시 요청을 실제 배치된 오후 시간으로 정렬한다.
-      return text.replaceAll("\\b" + mentionedHour + "\\s*시", normalizedActualHour + "시");
-    }
-    return text;
-  }
-
-  private boolean rewriteTodoFieldsByRelation(
-      JsonNode todoNode, String eventLabel, RelationToEvent relation) {
-    if (!(todoNode instanceof com.fasterxml.jackson.databind.node.ArrayNode arrayNode))
-      return false;
-    boolean changed = false;
-    for (JsonNode item : arrayNode) {
-      if (!(item instanceof com.fasterxml.jackson.databind.node.ObjectNode objectNode)) continue;
-      String title = objectNode.path("title").asText("");
-      if (!title.isBlank()) {
-        String rewrittenTitle = rewriteDescriptionByRelation(title, eventLabel, relation);
-        if (!rewrittenTitle.equals(title)) {
-          objectNode.put("title", rewrittenTitle);
-          changed = true;
-        }
-      }
-      String description = objectNode.path("description").asText("");
-      if (description.isBlank()) continue;
-      String rewritten = rewriteDescriptionByRelation(description, eventLabel, relation);
-      if (!rewritten.equals(description)) {
-        objectNode.put("description", rewritten);
-        changed = true;
-      }
-    }
-    return changed;
-  }
-
-  private LocalDateTime normalizeTodoTimeByEventContext(
-      JsonNode firstTodoNode,
-      com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem matchedEvent,
-      String userMessage) {
-    String fallbackStartAtRaw = firstTodoNode.path("startAt").asText("");
-    if (fallbackStartAtRaw.isBlank()) return matchedEvent.startAt();
-    if (!(firstTodoNode
-        instanceof com.fasterxml.jackson.databind.node.ObjectNode firstTodoObjectNode)) {
-      return LocalDateTime.parse(fallbackStartAtRaw);
-    }
-    String startAtRaw = firstTodoObjectNode.path("startAt").asText("");
-    String endAtRaw = firstTodoObjectNode.path("endAt").asText("");
-    if (startAtRaw.isBlank() || endAtRaw.isBlank()) return LocalDateTime.parse(fallbackStartAtRaw);
-    LocalDateTime startAt = LocalDateTime.parse(startAtRaw);
-    LocalDateTime endAt = LocalDateTime.parse(endAtRaw);
-    if (!endAt.isAfter(startAt)) return startAt;
-    if (userMessage == null || userMessage.isBlank()) return startAt;
-    String safeMessage = userMessage.toLowerCase();
-    boolean explicitBeforeIntent = safeMessage.contains("시작 전") || safeMessage.contains("전에");
-    if (explicitBeforeIntent) return startAt;
-    if (safeMessage.contains("오전")
-        || safeMessage.contains("오후")
-        || safeMessage.contains("아침")
-        || safeMessage.contains("저녁")
-        || safeMessage.contains("밤")) {
-      return startAt;
-    }
-    Matcher hourMatcher = Pattern.compile("(\\d{1,2})\\s*시").matcher(safeMessage);
-    if (!hourMatcher.find()) return startAt;
-    int mentionedHour;
-    try {
-      mentionedHour = Integer.parseInt(hourMatcher.group(1));
-    } catch (Exception ignored) {
-      return startAt;
-    }
-    if (mentionedHour < 1 || mentionedHour > 12) return startAt;
-    if (matchedEvent.startAt() == null || matchedEvent.endAt() == null) return startAt;
-
-    Set<String> messageTokens = tokenize(safeMessage);
-    String eventCategory = normalizeText(matchedEvent.category());
-    String eventTitle = normalizeText(matchedEvent.title());
-    String eventDescription = normalizeText(matchedEvent.description());
-    Set<String> eventTokens = tokenize(eventCategory + " " + eventTitle + " " + eventDescription);
-    int contextMatchScore = overlapScore(messageTokens, eventTokens, 2);
-    if (!eventCategory.isBlank() && safeMessage.contains(eventCategory)) contextMatchScore += 3;
-    if (!eventTitle.isBlank() && safeMessage.contains(eventTitle)) contextMatchScore += 2;
-    if (safeMessage.contains("시간") || safeMessage.contains("때")) contextMatchScore += 1;
-    if (contextMatchScore <= 0) return startAt;
-
-    int interpretedHour =
-        (matchedEvent.startAt().getHour() >= 12 && mentionedHour <= 11)
-            ? mentionedHour + 12
-            : mentionedHour;
-    if (interpretedHour < 0 || interpretedHour > 23) return startAt;
-
-    LocalDateTime adjustedStartAt =
-        LocalDateTime.of(startAt.toLocalDate(), startAt.toLocalTime().withHour(interpretedHour));
-    java.time.Duration duration = java.time.Duration.between(startAt, endAt);
-    LocalDateTime adjustedEndAt = adjustedStartAt.plus(duration);
-    if (!adjustedStartAt.isBefore(matchedEvent.startAt())
-        && !adjustedEndAt.isAfter(matchedEvent.endAt())) {
-      firstTodoObjectNode.put("startAt", adjustedStartAt.toString());
-      firstTodoObjectNode.put("endAt", adjustedEndAt.toString());
-      firstTodoObjectNode.put("scheduledDate", adjustedStartAt.toLocalDate().toString());
-      return adjustedStartAt;
-    }
-    return startAt;
-  }
-
-  private String rewriteDescriptionByRelation(
-      String description, String eventLabel, RelationToEvent relation) {
-    String rewritten = description;
-    switch (relation) {
-      case DURING -> {
-        rewritten = rewritten.replace("시작 전", "시간대");
-        if (!eventLabel.isBlank()) {
-          rewritten = rewritten.replace(eventLabel + " 시작 전", eventLabel + " 시간대");
-          rewritten = rewritten.replace(eventLabel + " 전", eventLabel + " 시간대");
-        }
-      }
-      case AFTER -> {
-        if (!eventLabel.isBlank()) {
-          rewritten = rewritten.replace(eventLabel + " 시작 전", eventLabel + " 이후");
-          rewritten = rewritten.replace(eventLabel + " 시간대", eventLabel + " 이후");
-        }
-      }
-      case BEFORE -> {
-        if (!eventLabel.isBlank()) {
-          rewritten = rewritten.replace(eventLabel + " 시간대", eventLabel + " 시작 전");
-        }
-      }
-    }
-    return rewritten;
-  }
-
-  private com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem findBestMatchedEvent(
-      String userMessage,
-      JsonNode firstTodoNode,
-      LocalDateTime todoStartAt,
-      List<com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem> calendarEvents) {
-    String normalizedMessage = normalizeText(userMessage);
-    String todoTitle = normalizeText(firstTodoNode.path("title").asText(""));
-    String todoDescription = normalizeText(firstTodoNode.path("description").asText(""));
-    Set<String> messageTokens = tokenize(normalizedMessage);
-    Set<String> todoTokens = tokenize(todoTitle + " " + todoDescription);
-
-    int bestScore = Integer.MIN_VALUE;
-    com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem bestEvent = null;
-    for (com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem event : calendarEvents) {
-      if (event == null || event.startAt() == null || event.endAt() == null) continue;
-      String eventCategory = normalizeText(event.category());
-      String eventTitle = normalizeText(event.title());
-      String eventDescription = normalizeText(event.description());
-      Set<String> eventTokens = tokenize(eventCategory + " " + eventTitle + " " + eventDescription);
-
-      int score = 0;
-      if (!eventCategory.isBlank() && normalizedMessage.contains(eventCategory)) score += 8;
-      if (!eventCategory.isBlank() && (todoTitle + " " + todoDescription).contains(eventCategory))
-        score += 5;
-      score += overlapScore(messageTokens, eventTokens, 2);
-      score += overlapScore(todoTokens, eventTokens, 2);
-      if (todoStartAt.toLocalDate().equals(event.startAt().toLocalDate())) score += 3;
-      if (!todoStartAt.isBefore(event.startAt()) && todoStartAt.isBefore(event.endAt())) score += 4;
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestEvent = event;
-      }
-    }
-    return bestScore > 0 ? bestEvent : null;
-  }
-
-  private int overlapScore(Set<String> leftTokens, Set<String> rightTokens, int perToken) {
-    if (leftTokens.isEmpty() || rightTokens.isEmpty()) return 0;
-    int overlap = 0;
-    for (String token : leftTokens) {
-      if (rightTokens.contains(token)) overlap++;
-    }
-    return overlap * perToken;
-  }
-
-  private String rewriteNarrativeByRelation(
-      String text,
-      String eventLabel,
-      RelationToEvent relation,
-      LocalDateTime eventStartAt,
-      LocalDateTime eventEndAt) {
-    String rewritten = text;
-    switch (relation) {
-      case DURING -> {
-        rewritten = rewritten.replace("시작 전", "시간대에");
-        if (!eventLabel.isBlank()) {
-          rewritten = rewritten.replace(eventLabel + " 전", eventLabel + " 시간대에");
-          rewritten = rewritten.replace(eventLabel + " 시작 전", eventLabel + " 시간대에");
-        }
-        if (rewritten.equals(text)) {
-          rewritten +=
-              "\n\n※ 실제 배치는 "
-                  + eventLabel
-                  + " 시간대("
-                  + eventStartAt.toLocalTime()
-                  + "~"
-                  + eventEndAt.toLocalTime()
-                  + ") 기준으로 반영했습니다.";
-        }
-      }
-      case BEFORE -> {
-        if (!eventLabel.isBlank()) {
-          rewritten = rewritten.replace(eventLabel + " 시간대에", eventLabel + " 시작 전");
-        }
-      }
-      case AFTER -> {
-        if (!eventLabel.isBlank()) {
-          rewritten = rewritten.replace(eventLabel + " 시작 전", eventLabel + " 이후");
-          rewritten = rewritten.replace(eventLabel + " 시간대에", eventLabel + " 이후");
-        }
-      }
-    }
-    return rewritten;
-  }
-
-  private RelationToEvent determineRelationToEvent(
-      LocalDateTime todoStartAt, LocalDateTime eventStartAt, LocalDateTime eventEndAt) {
-    if (todoStartAt.isBefore(eventStartAt)) return RelationToEvent.BEFORE;
-    if (todoStartAt.isBefore(eventEndAt)) return RelationToEvent.DURING;
-    return RelationToEvent.AFTER;
-  }
-
-  private String buildEventLabel(
-      com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem event) {
-    String category = event.category() == null ? "" : event.category().trim();
-    if (!category.isBlank() && !looksLikeMachineCategory(category)) return category;
-    String title = event.title() == null ? "" : event.title().trim();
-    if (!title.isBlank()) return title;
-    if (!category.isBlank()) return category;
-    return "일정";
-  }
-
-  private boolean looksLikeMachineCategory(String category) {
-    String normalizedCategory = category == null ? "" : category.trim();
-    if (normalizedCategory.isBlank()) return false;
-    // 영문 대문자/언더스코어 위주 코드를 사용자 노출 라벨에서 제외한다. (예: JOB, WORK_SHIFT)
-    return normalizedCategory.matches("^[A-Z0-9_\\-]{2,}$");
-  }
-
-  private String normalizeText(String value) {
-    if (value == null) return "";
-    return value.toLowerCase().trim();
-  }
-
-  private Set<String> tokenize(String text) {
-    Set<String> tokens = new HashSet<>();
-    if (text == null || text.isBlank()) return tokens;
-    for (String raw : text.split("[\\s,./()~\\-:]+")) {
-      String token = raw.trim();
-      if (token.length() < 2) continue;
-      tokens.add(token);
-    }
-    return tokens;
-  }
-
-  private enum RelationToEvent {
-    BEFORE,
-    DURING,
-    AFTER
   }
 
   public List<String> buildTodoProgressNotes(Long userId, Long agentId, String userMessage) {
@@ -760,24 +445,6 @@ public class AgentChatPlanningSupport {
     return userId + "::" + agentId + "::" + normalizedMessage;
   }
 
-  private boolean shouldSkipTodoEnhancementPlanning(
-      String userMessage, int calendarEventCount, int existingTodoCount, int agentTodoCount) {
-    String safeMessage = userMessage == null ? "" : userMessage.trim();
-    if (safeMessage.isBlank()) return true;
-    if (isSimpleTodoCreationRequest(safeMessage)) return true;
-    boolean explicitComplexityHint =
-        safeMessage.contains("재배치")
-            || safeMessage.contains("조정")
-            || safeMessage.contains("충돌")
-            || safeMessage.contains("우선순위")
-            || safeMessage.contains("분할");
-    if (explicitComplexityHint) return false;
-    boolean shortAndSimple = safeMessage.length() <= 48;
-    boolean lowContextLoad =
-        calendarEventCount <= 3 && existingTodoCount <= 8 && agentTodoCount <= 6;
-    return shortAndSimple || lowContextLoad;
-  }
-
   private List<String> planTodoEnhancementCommands(
       String userMessage,
       int calendarEventCount,
@@ -788,25 +455,7 @@ public class AgentChatPlanningSupport {
     try {
       List<Message> messages = new ArrayList<>();
       messages.add(
-          new Message(
-              "system",
-              """
-              너는 TODO 계획 강화용 툴 실행 플래너다.
-              아래 커맨드 중 필요한 것만 순서대로 선택해 JSON으로만 반환하라.
-
-              [commands]
-              - rank_task_priority
-              - detect_overload
-              - estimate_task_effort
-              - split_task
-              - insert_buffer_blocks
-              - commute_aware_schedule
-              - deadline_risk_score
-              - explain_plan_brief
-
-              출력 스키마:
-              {"commands":["rank_task_priority","detect_overload"]}
-              """));
+          new Message("system", AgentPromptTemplates.TODO_ENHANCEMENT_PLANNER_SYSTEM_PROMPT));
       messages.add(
           new Message(
               "user",
@@ -845,78 +494,6 @@ public class AgentChatPlanningSupport {
       log.warn("❤️ [에이전트 TODO] 강화 커맨드 계획 실패, 기본값으로 대체 message={}", e.getMessage());
       return List.of("rank_task_priority", "detect_overload");
     }
-  }
-
-  private boolean isSimpleTodoCreationRequest(String userMessage) {
-    String safeMessage = userMessage == null ? "" : userMessage.trim();
-    if (safeMessage.isBlank()) return true;
-    boolean explicitComplexityHint =
-        safeMessage.contains("재배치")
-            || safeMessage.contains("조정")
-            || safeMessage.contains("충돌")
-            || safeMessage.contains("우선순위")
-            || safeMessage.contains("분할")
-            || safeMessage.contains("재계획");
-    if (explicitComplexityHint) return false;
-    boolean simpleActionVerb =
-        safeMessage.contains("넣어")
-            || safeMessage.contains("추가")
-            || safeMessage.contains("만들어")
-            || safeMessage.contains("배치")
-            || safeMessage.contains("잡아");
-    boolean hasRelativeTimeHint =
-        safeMessage.contains("오늘")
-            || safeMessage.contains("내일")
-            || safeMessage.contains("모레")
-            || safeMessage.contains("이번주")
-            || safeMessage.contains("시쯤")
-            || safeMessage.contains("시");
-    return simpleActionVerb && hasRelativeTimeHint;
-  }
-
-  private int resolveEnhancementCommandLimit(
-      String userMessage, int calendarEventCount, int existingTodoCount, int agentTodoCount) {
-    if (isSimpleTodoCreationRequest(userMessage)) return 0;
-    String safeMessage = userMessage == null ? "" : userMessage.trim();
-    boolean explicitComplexityHint =
-        safeMessage.contains("재배치")
-            || safeMessage.contains("조정")
-            || safeMessage.contains("충돌")
-            || safeMessage.contains("우선순위")
-            || safeMessage.contains("분할")
-            || safeMessage.contains("리스크");
-    if (explicitComplexityHint) return 2;
-    boolean highContextLoad =
-        calendarEventCount >= 6 || existingTodoCount >= 14 || agentTodoCount >= 10;
-    return highContextLoad ? 2 : 1;
-  }
-
-  private List<String> sanitizePlannedCommands(List<String> plannedCommands, int maxCommands) {
-    if (plannedCommands == null || plannedCommands.isEmpty() || maxCommands <= 0) return List.of();
-    List<String> allowedOrder =
-        List.of(
-            "rank_task_priority",
-            "detect_overload",
-            "estimate_task_effort",
-            "split_task",
-            "insert_buffer_blocks",
-            "commute_aware_schedule",
-            "deadline_risk_score",
-            "explain_plan_brief");
-    Set<String> allowedSet = new HashSet<>(allowedOrder);
-    List<String> normalized = new ArrayList<>();
-    for (String command : plannedCommands) {
-      if (command == null || command.isBlank()) continue;
-      String normalizedCommand = command.trim();
-      if (!allowedSet.contains(normalizedCommand)) continue;
-      if (normalized.contains(normalizedCommand)) continue;
-      normalized.add(normalizedCommand);
-      if (normalized.size() >= maxCommands) break;
-    }
-    if (!normalized.isEmpty()) return normalized;
-    return maxCommands >= 2
-        ? List.of("rank_task_priority", "detect_overload")
-        : List.of("rank_task_priority");
   }
 
   private Map<String, Object> executeTodoEnhancementCommands(
@@ -1076,28 +653,7 @@ public class AgentChatPlanningSupport {
           inferDayHintDate(userMessage == null ? "" : userMessage.toLowerCase(), fallbackMonthDate);
       List<Message> messages = new ArrayList<>();
       messages.add(
-          new Message(
-              "system",
-              """
-              너는 조정 요청 통합 추론기다.
-              아래 항목을 한 번에 판단해서 JSON만 반환하라.
-
-              출력 스키마:
-              {
-                "mode": "CHAT" | "TODO" | "TODO_NEGOTIATION",
-                "targetTodoIds": [1,2],
-                "shiftMinutes": 0,
-                "confidence": 0.0,
-                "reason": "string"
-              }
-
-              규칙:
-              - 후보 id는 제공된 todos.id 안에서만 선택한다.
-              - "1시간만/30분만" 같은 표현은 shiftMinutes로 반영한다.
-              - 단일 조정 요청이면 targetTodoIds는 가능하면 1개로 제한한다.
-              - 모호하면 targetTodoIds는 빈 배열로 둔다.
-              - 마크다운/코드블록 금지.
-              """));
+          new Message("system", AgentPromptTemplates.NEGOTIATION_INTENT_PLAN_SYSTEM_PROMPT));
       messages.add(
           new Message(
               "user",
@@ -1181,89 +737,6 @@ public class AgentChatPlanningSupport {
     progressEmitter.accept(message);
   }
 
-  private String buildTimeInterpretationHint(
-      String userMessage,
-      List<com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem> calendarEvents,
-      LocalDate contextStartDate,
-      LocalDate contextEndDate) {
-    if (userMessage == null || userMessage.isBlank()) return "";
-    String safeMessage = userMessage.toLowerCase();
-    Matcher hourMatcher = Pattern.compile("(\\d{1,2})\\s*시").matcher(safeMessage);
-    if (!hourMatcher.find()) return "";
-    int mentionedHour;
-    try {
-      mentionedHour = Integer.parseInt(hourMatcher.group(1));
-    } catch (Exception ignored) {
-      return "";
-    }
-    if (mentionedHour < 1 || mentionedHour > 12) return "";
-
-    boolean explicitlyMorning =
-        safeMessage.contains("오전")
-            || safeMessage.contains("아침")
-            || safeMessage.contains("새벽")
-            || safeMessage.contains("낮");
-    boolean explicitlyEvening =
-        safeMessage.contains("오후")
-            || safeMessage.contains("저녁")
-            || safeMessage.contains("밤")
-            || safeMessage.contains("야간");
-    if (explicitlyMorning || explicitlyEvening) return "";
-    if (calendarEvents == null || calendarEvents.isEmpty()) return "";
-
-    Set<String> messageTokens = tokenize(safeMessage);
-    com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem bestMatchedEvent = null;
-    int bestScore = Integer.MIN_VALUE;
-    for (com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem event : calendarEvents) {
-      if (event == null || event.startAt() == null || event.endAt() == null) continue;
-      LocalDate eventDate = event.date();
-      if (eventDate == null) eventDate = event.startAt().toLocalDate();
-      if (eventDate == null) continue;
-      if (eventDate.isBefore(contextStartDate) || eventDate.isAfter(contextEndDate)) continue;
-
-      String category = event.category() == null ? "" : event.category().toLowerCase();
-      String title = event.title() == null ? "" : event.title().toLowerCase();
-      String description = event.description() == null ? "" : event.description().toLowerCase();
-      int workStartHour = event.startAt().getHour();
-      int workEndHour = event.endAt().getHour();
-      int interpretedHour = mentionedHour;
-      if (mentionedHour <= 11 && workStartHour >= 12) {
-        interpretedHour = mentionedHour + 12;
-      }
-      if (interpretedHour < workStartHour || interpretedHour > workEndHour) continue;
-
-      Set<String> eventTokens = tokenize(category + " " + title + " " + description);
-      int overlapScore = overlapScore(messageTokens, eventTokens, 2);
-      int score = overlapScore;
-      if (!category.isBlank() && safeMessage.contains(category)) score += 4;
-      if (!title.isBlank() && safeMessage.contains(title)) score += 3;
-      if (safeMessage.contains("시간") || safeMessage.contains("때")) score += 1;
-      if (eventDate.equals(LocalDate.now(PLANNER_ZONE_ID))) score += 1;
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatchedEvent = event;
-      }
-    }
-
-    if (bestMatchedEvent == null) return "";
-    String category =
-        bestMatchedEvent.category() == null ? "" : bestMatchedEvent.category().toLowerCase();
-    String title = bestMatchedEvent.title() == null ? "" : bestMatchedEvent.title().toLowerCase();
-    int interpretedHour = mentionedHour;
-    if (mentionedHour <= 11 && bestMatchedEvent.startAt().getHour() >= 12) {
-      interpretedHour = mentionedHour + 12;
-    }
-    String contextLabel = !category.isBlank() ? category : (!title.isBlank() ? title : "관련 일정");
-    return "- 시간 해석 규칙: 사용자가 '"
-        + contextLabel
-        + "' 문맥에서 '"
-        + mentionedHour
-        + "시'라고 말하고 오전/오후를 명시하지 않으면, 해당 날짜 관련 일정 시간대를 기준으로 해석하라. "
-        + "이번 요청에서는 "
-        + interpretedHour
-        + ":00(24시간제)로 배치하라.";
-  }
-
   private List<Long> inferNegotiationTargetTodoIdsByRule(
       String userMessage,
       List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> todos,
@@ -1326,26 +799,7 @@ public class AgentChatPlanningSupport {
           inferDayHintDate(userMessage == null ? "" : userMessage.toLowerCase(), fallbackMonthDate);
       List<Message> messages = new ArrayList<>();
       messages.add(
-          new Message(
-              "system",
-              """
-              너는 일정 조정 타깃 추론 에이전트다.
-              사용자의 자연어 조정 요청에서 실제로 수정할 TODO id를 추론하라.
-              반드시 JSON만 반환하라.
-
-              출력 스키마:
-              {
-                "targetTodoIds": [1,2],
-                "confidence": 0.0,
-                "reason": "string"
-              }
-
-              규칙:
-              - 후보는 제공된 todos의 id 안에서만 선택한다.
-              - 단일 조정 표현(예: "1시간만 미뤄", "하나만")이면 가능한 1개만 선택한다.
-              - 모호하면 빈 배열을 반환한다.
-              - 마크다운/코드블록 금지.
-              """));
+          new Message("system", AgentPromptTemplates.NEGOTIATION_TARGET_INFERENCE_SYSTEM_PROMPT));
       java.util.LinkedHashMap<String, Object> aiInput = new java.util.LinkedHashMap<>();
       aiInput.put("userMessage", userMessage == null ? "" : userMessage);
       aiInput.put("hintedDate", hintedDate == null ? null : hintedDate.toString());
@@ -1463,26 +917,7 @@ public class AgentChatPlanningSupport {
     }
     try {
       List<Message> messages = new ArrayList<>();
-      messages.add(
-          new Message(
-              "system",
-              """
-              너는 채팅 라우팅 에이전트다.
-              아래 실행 가능한 커맨드 중 하나를 선택해 JSON으로만 답하라.
-
-              [commands]
-              - route_chat(reason)
-              - route_todo_create(reason)
-              - route_todo_negotiate(reason)
-
-              출력 스키마:
-              {
-                "commands": [
-                  { "name": "route_chat" | "route_todo_create" | "route_todo_negotiate", "reason": "string" }
-                ],
-                "confidence": 0.0
-              }
-              """));
+      messages.add(new Message("system", AgentPromptTemplates.CHAT_MODE_ROUTER_SYSTEM_PROMPT));
       messages.add(new Message("user", userMessage == null ? "" : userMessage));
 
       String rawPlan = openAiClient.createInferenceChatCompletionWithMessages(messages);
@@ -1680,34 +1115,7 @@ public class AgentChatPlanningSupport {
       var events = agentPlanningToolService.getCalendarEvents(userId, today, maxDate);
       var todos = agentPlanningToolService.getTodos(userId, today, maxDate, false);
       List<Message> messages = new ArrayList<>();
-      messages.add(
-          new Message(
-              "system",
-              """
-              너는 일정 추론 에이전트다.
-              아래 실행 가능한 커맨드만 사용한다고 가정하고, 반드시 JSON만 반환하라.
-
-              [commands]
-              - select_exam_date(targetDate, reason)
-              - no_match(reason)
-
-              응답 스키마:
-              {
-                "commands": [
-                  {
-                    "name": "select_exam_date" | "no_match",
-                    "targetDate": "YYYY-MM-DD 또는 null",
-                    "reason": "string"
-                  }
-                ]
-              }
-
-              규칙:
-              - userMessage 의 맥락(과목/시험 종류)을 최대한 반영한다.
-              - date 후보는 제공된 calendarEvents/todos 안에서만 고른다.
-              - 못 고르면 no_match를 반환한다.
-              - 마크다운, 코드블록 금지. JSON만.
-              """));
+      messages.add(new Message("system", AgentPromptTemplates.EXAM_DATE_INFERENCE_SYSTEM_PROMPT));
       messages.add(
           new Message(
               "user",

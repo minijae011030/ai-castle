@@ -1,5 +1,7 @@
 package com.aicastle.backend.service;
 
+import com.aicastle.backend.agentchat.planning.AgentChatPlanningSupport;
+import com.aicastle.backend.agentchat.prompt.AgentSystemPromptBuilder;
 import com.aicastle.backend.dto.ChatDtos.ChatHistoryPageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatMessageResponse;
 import com.aicastle.backend.dto.ChatDtos.ChatMessageRole;
@@ -26,8 +28,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -57,6 +57,7 @@ public class AgentChatService {
   private final ChatMessageRepository chatMessageRepository;
   private final AgentPinnedMemoryRepository agentPinnedMemoryRepository;
   private final AgentChatPlanningSupport agentChatPlanningSupport;
+  private final AgentSystemPromptBuilder agentSystemPromptBuilder;
   private final OpenAiClient openAiClient;
   private final ObjectMapper objectMapper;
 
@@ -66,6 +67,7 @@ public class AgentChatService {
       ChatMessageRepository chatMessageRepository,
       AgentPinnedMemoryRepository agentPinnedMemoryRepository,
       AgentChatPlanningSupport agentChatPlanningSupport,
+      AgentSystemPromptBuilder agentSystemPromptBuilder,
       OpenAiClient openAiClient,
       ObjectMapper objectMapper) {
     this.agentRoleRepository = agentRoleRepository;
@@ -73,6 +75,7 @@ public class AgentChatService {
     this.chatMessageRepository = chatMessageRepository;
     this.agentPinnedMemoryRepository = agentPinnedMemoryRepository;
     this.agentChatPlanningSupport = agentChatPlanningSupport;
+    this.agentSystemPromptBuilder = agentSystemPromptBuilder;
     this.openAiClient = openAiClient;
     this.objectMapper = objectMapper;
   }
@@ -210,38 +213,7 @@ public class AgentChatService {
         new ChatMessage(
             user, agent, ChatMessage.Role.USER, entityMode, content, userImageUrlsJson));
 
-    String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
-    String modePrompt =
-        mode == ChatMode.TODO
-            ? "\n\n[모드: TODO]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"groupTitle\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 모든 todo 항목에 날짜/시간을 반드시 포함하라.\n- todo 항목은 짧고 측정 가능해야 한다.\n"
-            : mode == ChatMode.TODO_NEGOTIATION
-                ? "\n\n[모드: TODO_NEGOTIATION]\n- 반드시 JSON만 출력하라. (설명 문장/마크다운/코드블록 금지)\n- 스키마: {\"text\": string, \"groupTitle\": string, \"todo\": [{\"title\": string, \"description\": string|null, \"estimateMinutes\": number|null, \"priority\": \"LOW\"|\"MEDIUM\"|\"HIGH\", \"status\": \"TODO\"|\"DONE\", \"scheduledDate\": \"YYYY-MM-DD\", \"startAt\": \"YYYY-MM-DDTHH:mm:ss\", \"endAt\": \"YYYY-MM-DDTHH:mm:ss\"}]}\n- 조정 요청된 TODO를 현실적으로 재배치하되, 마감/우선순위를 고려하라.\n- preferred deadline이 있으면 그 날짜를 우선 존중하라.\n- 반드시 날짜/시간이 포함된 todo[]를 반환하라.\n"
-                : "\n\n[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
-
-    LocalDate today = LocalDate.now(PLANNER_ZONE_ID);
-    LocalTime now = LocalTime.now(PLANNER_ZONE_ID).withNano(0);
-    // 한국 사용자 일정 기준: 명시하지 않으면 모델이 2024 등 과거 연도로 JSON을 채우는 경우가 많음
-    String calendarAnchor =
-        "[현재 시각 기준]\n"
-            + "- 오늘 날짜(Asia/Seoul): "
-            + today
-            + "\n"
-            + "- 현재 시각: "
-            + now
-            + "\n"
-            + "- TODO/일정의 scheduledDate, startAt, endAt는 위 오늘을 기준으로 현실적인 날짜·시간을 사용하라. "
-            + "학습 데이터에 묶인 과거 연도(예: 2024)를 사용하지 마라.\n\n";
-
-    String systemPrompt =
-        calendarAnchor
-            + agent.getSystemPrompt()
-            + "\n\n"
-            + "너는 "
-            + roleLabel
-            + " 에이전트("
-            + agent.getName()
-            + ")다. 한국어로 간결하고 실행 가능하게 답하라."
-            + modePrompt;
+    String systemPrompt = agentSystemPromptBuilder.build(agent, mode, PLANNER_ZONE_ID);
 
     String reply;
     List<String> progressNotes = null;
@@ -416,31 +388,7 @@ public class AgentChatService {
           new ChatMessage(
               user, agent, ChatMessage.Role.USER, ChatMessage.Mode.CHAT, content, null));
 
-      String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
-
-      LocalDate today = LocalDate.now(PLANNER_ZONE_ID);
-      LocalTime now = LocalTime.now(PLANNER_ZONE_ID).withNano(0);
-      String calendarAnchor =
-          "[현재 시각 기준]\n"
-              + "- 오늘 날짜(Asia/Seoul): "
-              + today
-              + "\n"
-              + "- 현재 시각: "
-              + now
-              + "\n"
-              + "- TODO/일정의 scheduledDate, startAt, endAt는 위 오늘을 기준으로 현실적인 날짜·시간을 사용하라. "
-              + "학습 데이터에 묶인 과거 연도(예: 2024)를 사용하지 마라.\n\n";
-
-      String systemPrompt =
-          calendarAnchor
-              + agent.getSystemPrompt()
-              + "\n\n"
-              + "너는 "
-              + roleLabel
-              + " 에이전트("
-              + agent.getName()
-              + ")다. 한국어로 간결하고 실행 가능하게 답하라.\n\n"
-              + "[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
+      String systemPrompt = agentSystemPromptBuilder.build(agent, ChatMode.CHAT, PLANNER_ZONE_ID);
 
       List<Message> messages = new ArrayList<>();
       messages.add(new Message("system", systemPrompt));
@@ -592,21 +540,7 @@ public class AgentChatService {
           new ChatMessage(
               user, agent, ChatMessage.Role.USER, ChatMessage.Mode.CHAT, content, null));
 
-      String roleLabel = agent.getRoleType() == AgentRoleType.MAIN ? "메인" : "서브";
-      LocalDate today = LocalDate.now(PLANNER_ZONE_ID);
-      LocalTime now = LocalTime.now(PLANNER_ZONE_ID).withNano(0);
-      String systemPrompt =
-          "[현재 시각 기준]\n- 오늘 날짜(Asia/Seoul): "
-              + today
-              + "\n- 현재 시각: "
-              + now
-              + "\n\n"
-              + agent.getSystemPrompt()
-              + "\n\n너는 "
-              + roleLabel
-              + " 에이전트("
-              + agent.getName()
-              + ")다. 한국어로 간결하고 실행 가능하게 답하라.\n\n[모드: CHAT]\n- 자연스러운 대화로 답하라.\n";
+      String systemPrompt = agentSystemPromptBuilder.build(agent, ChatMode.CHAT, PLANNER_ZONE_ID);
 
       List<Message> messages = new ArrayList<>();
       messages.add(new Message("system", systemPrompt));
