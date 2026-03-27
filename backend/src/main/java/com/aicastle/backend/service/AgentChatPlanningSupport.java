@@ -269,13 +269,24 @@ public class AgentChatPlanningSupport {
                   agentTodos.size(),
                   contextStartDate,
                   contextEndDate);
+      int commandLimit =
+          resolveEnhancementCommandLimit(
+              userMessage, calendarEvents.size(), existingTodos.size(), agentTodos.size());
+      List<String> normalizedPlannedCommands =
+          sanitizePlannedCommands(plannedCommands, commandLimit);
+      log.info(
+          "❤️ [에이전트 TODO] 강화 커맨드 최적화 skip={}, commandLimit={}, rawCommands={}, normalizedCommands={}",
+          skipEnhancementPlanning,
+          commandLimit,
+          plannedCommands,
+          normalizedPlannedCommands);
       Map<String, Object> enhancementResults =
           skipEnhancementPlanning
               ? Map.of("skipped", true, "reason", "simple_request")
               : executeTodoEnhancementCommands(
                   userId,
                   userMessage,
-                  plannedCommands,
+                  normalizedPlannedCommands,
                   contextStartDate,
                   contextEndDate,
                   existingTodos,
@@ -301,7 +312,7 @@ public class AgentChatPlanningSupport {
                   "userConstraints",
                   constraints,
                   "plannedCommands",
-                  plannedCommands,
+                  normalizedPlannedCommands,
                   "skipEnhancementPlanning",
                   skipEnhancementPlanning,
                   "enhancementResults",
@@ -319,7 +330,7 @@ public class AgentChatPlanningSupport {
           calendarEvents.size(),
           existingTodos.size(),
           agentTodos.size(),
-          plannedCommands,
+          normalizedPlannedCommands,
           skipEnhancementPlanning);
 
       List<Message> messages = new ArrayList<>();
@@ -368,12 +379,15 @@ public class AgentChatPlanningSupport {
       if (matchedEvent == null || matchedEvent.startAt() == null || matchedEvent.endAt() == null) {
         return rawTodoResponse;
       }
+      LocalDateTime normalizedTodoStartAt =
+          normalizeTodoTimeByEventContext(firstTodo, matchedEvent, userMessage);
 
       String originalText = textNode.asText("");
       if (originalText.isBlank()) return rawTodoResponse;
       String normalizedLabel = buildEventLabel(matchedEvent);
       RelationToEvent relation =
-          determineRelationToEvent(todoStartAt, matchedEvent.startAt(), matchedEvent.endAt());
+          determineRelationToEvent(
+              normalizedTodoStartAt, matchedEvent.startAt(), matchedEvent.endAt());
       String rewrittenText =
           rewriteNarrativeByRelation(
               originalText,
@@ -381,13 +395,161 @@ public class AgentChatPlanningSupport {
               relation,
               matchedEvent.startAt(),
               matchedEvent.endAt());
-      if (rewrittenText.equals(originalText)) return rawTodoResponse;
+      String alignedText =
+          alignNarrativeHourExpression(
+              rewrittenText, userMessage, normalizedTodoStartAt.toLocalTime().getHour(), relation);
+      boolean todoFieldsChanged = rewriteTodoFieldsByRelation(todoNode, normalizedLabel, relation);
+      boolean timeAdjusted = !normalizedTodoStartAt.equals(todoStartAt);
+      if (alignedText.equals(originalText) && !todoFieldsChanged && !timeAdjusted)
+        return rawTodoResponse;
 
-      ((com.fasterxml.jackson.databind.node.ObjectNode) root).put("text", rewrittenText);
+      ((com.fasterxml.jackson.databind.node.ObjectNode) root).put("text", alignedText);
       return objectMapper.writeValueAsString(root);
     } catch (Exception ignored) {
       return rawTodoResponse;
     }
+  }
+
+  private String alignNarrativeHourExpression(
+      String text, String userMessage, int actualStartHour, RelationToEvent relation) {
+    if (text == null || text.isBlank()) return text;
+    if (userMessage == null || userMessage.isBlank()) return text;
+    Matcher userHourMatcher = Pattern.compile("(\\d{1,2})\\s*시").matcher(userMessage.toLowerCase());
+    if (!userHourMatcher.find()) return text;
+    int mentionedHour;
+    try {
+      mentionedHour = Integer.parseInt(userHourMatcher.group(1));
+    } catch (Exception ignored) {
+      return text;
+    }
+    if (mentionedHour < 1 || mentionedHour > 12) return text;
+    int normalizedActualHour = actualStartHour;
+    if (relation == RelationToEvent.DURING && normalizedActualHour >= 12 && mentionedHour <= 11) {
+      // 모호한 8시/9시 요청을 실제 배치된 오후 시간으로 정렬한다.
+      return text.replaceAll("\\b" + mentionedHour + "\\s*시", normalizedActualHour + "시");
+    }
+    return text;
+  }
+
+  private boolean rewriteTodoFieldsByRelation(
+      JsonNode todoNode, String eventLabel, RelationToEvent relation) {
+    if (!(todoNode instanceof com.fasterxml.jackson.databind.node.ArrayNode arrayNode))
+      return false;
+    boolean changed = false;
+    for (JsonNode item : arrayNode) {
+      if (!(item instanceof com.fasterxml.jackson.databind.node.ObjectNode objectNode)) continue;
+      String title = objectNode.path("title").asText("");
+      if (!title.isBlank()) {
+        String rewrittenTitle = rewriteDescriptionByRelation(title, eventLabel, relation);
+        if (!rewrittenTitle.equals(title)) {
+          objectNode.put("title", rewrittenTitle);
+          changed = true;
+        }
+      }
+      String description = objectNode.path("description").asText("");
+      if (description.isBlank()) continue;
+      String rewritten = rewriteDescriptionByRelation(description, eventLabel, relation);
+      if (!rewritten.equals(description)) {
+        objectNode.put("description", rewritten);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  private LocalDateTime normalizeTodoTimeByEventContext(
+      JsonNode firstTodoNode,
+      com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem matchedEvent,
+      String userMessage) {
+    String fallbackStartAtRaw = firstTodoNode.path("startAt").asText("");
+    if (fallbackStartAtRaw.isBlank()) return matchedEvent.startAt();
+    if (!(firstTodoNode
+        instanceof com.fasterxml.jackson.databind.node.ObjectNode firstTodoObjectNode)) {
+      return LocalDateTime.parse(fallbackStartAtRaw);
+    }
+    String startAtRaw = firstTodoObjectNode.path("startAt").asText("");
+    String endAtRaw = firstTodoObjectNode.path("endAt").asText("");
+    if (startAtRaw.isBlank() || endAtRaw.isBlank()) return LocalDateTime.parse(fallbackStartAtRaw);
+    LocalDateTime startAt = LocalDateTime.parse(startAtRaw);
+    LocalDateTime endAt = LocalDateTime.parse(endAtRaw);
+    if (!endAt.isAfter(startAt)) return startAt;
+    if (userMessage == null || userMessage.isBlank()) return startAt;
+    String safeMessage = userMessage.toLowerCase();
+    boolean explicitBeforeIntent = safeMessage.contains("시작 전") || safeMessage.contains("전에");
+    if (explicitBeforeIntent) return startAt;
+    if (safeMessage.contains("오전")
+        || safeMessage.contains("오후")
+        || safeMessage.contains("아침")
+        || safeMessage.contains("저녁")
+        || safeMessage.contains("밤")) {
+      return startAt;
+    }
+    Matcher hourMatcher = Pattern.compile("(\\d{1,2})\\s*시").matcher(safeMessage);
+    if (!hourMatcher.find()) return startAt;
+    int mentionedHour;
+    try {
+      mentionedHour = Integer.parseInt(hourMatcher.group(1));
+    } catch (Exception ignored) {
+      return startAt;
+    }
+    if (mentionedHour < 1 || mentionedHour > 12) return startAt;
+    if (matchedEvent.startAt() == null || matchedEvent.endAt() == null) return startAt;
+
+    Set<String> messageTokens = tokenize(safeMessage);
+    String eventCategory = normalizeText(matchedEvent.category());
+    String eventTitle = normalizeText(matchedEvent.title());
+    String eventDescription = normalizeText(matchedEvent.description());
+    Set<String> eventTokens = tokenize(eventCategory + " " + eventTitle + " " + eventDescription);
+    int contextMatchScore = overlapScore(messageTokens, eventTokens, 2);
+    if (!eventCategory.isBlank() && safeMessage.contains(eventCategory)) contextMatchScore += 3;
+    if (!eventTitle.isBlank() && safeMessage.contains(eventTitle)) contextMatchScore += 2;
+    if (safeMessage.contains("시간") || safeMessage.contains("때")) contextMatchScore += 1;
+    if (contextMatchScore <= 0) return startAt;
+
+    int interpretedHour =
+        (matchedEvent.startAt().getHour() >= 12 && mentionedHour <= 11)
+            ? mentionedHour + 12
+            : mentionedHour;
+    if (interpretedHour < 0 || interpretedHour > 23) return startAt;
+
+    LocalDateTime adjustedStartAt =
+        LocalDateTime.of(startAt.toLocalDate(), startAt.toLocalTime().withHour(interpretedHour));
+    java.time.Duration duration = java.time.Duration.between(startAt, endAt);
+    LocalDateTime adjustedEndAt = adjustedStartAt.plus(duration);
+    if (!adjustedStartAt.isBefore(matchedEvent.startAt())
+        && !adjustedEndAt.isAfter(matchedEvent.endAt())) {
+      firstTodoObjectNode.put("startAt", adjustedStartAt.toString());
+      firstTodoObjectNode.put("endAt", adjustedEndAt.toString());
+      firstTodoObjectNode.put("scheduledDate", adjustedStartAt.toLocalDate().toString());
+      return adjustedStartAt;
+    }
+    return startAt;
+  }
+
+  private String rewriteDescriptionByRelation(
+      String description, String eventLabel, RelationToEvent relation) {
+    String rewritten = description;
+    switch (relation) {
+      case DURING -> {
+        rewritten = rewritten.replace("시작 전", "시간대");
+        if (!eventLabel.isBlank()) {
+          rewritten = rewritten.replace(eventLabel + " 시작 전", eventLabel + " 시간대");
+          rewritten = rewritten.replace(eventLabel + " 전", eventLabel + " 시간대");
+        }
+      }
+      case AFTER -> {
+        if (!eventLabel.isBlank()) {
+          rewritten = rewritten.replace(eventLabel + " 시작 전", eventLabel + " 이후");
+          rewritten = rewritten.replace(eventLabel + " 시간대", eventLabel + " 이후");
+        }
+      }
+      case BEFORE -> {
+        if (!eventLabel.isBlank()) {
+          rewritten = rewritten.replace(eventLabel + " 시간대", eventLabel + " 시작 전");
+        }
+      }
+    }
+    return rewritten;
   }
 
   private com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem findBestMatchedEvent(
@@ -594,6 +756,7 @@ public class AgentChatPlanningSupport {
       String userMessage, int calendarEventCount, int existingTodoCount, int agentTodoCount) {
     String safeMessage = userMessage == null ? "" : userMessage.trim();
     if (safeMessage.isBlank()) return true;
+    if (isSimpleTodoCreationRequest(safeMessage)) return true;
     boolean explicitComplexityHint =
         safeMessage.contains("재배치")
             || safeMessage.contains("조정")
@@ -601,10 +764,10 @@ public class AgentChatPlanningSupport {
             || safeMessage.contains("우선순위")
             || safeMessage.contains("분할");
     if (explicitComplexityHint) return false;
-    boolean shortAndSimple = safeMessage.length() <= 36;
+    boolean shortAndSimple = safeMessage.length() <= 48;
     boolean lowContextLoad =
-        calendarEventCount <= 1 && existingTodoCount <= 4 && agentTodoCount <= 3;
-    return shortAndSimple && lowContextLoad;
+        calendarEventCount <= 3 && existingTodoCount <= 8 && agentTodoCount <= 6;
+    return shortAndSimple || lowContextLoad;
   }
 
   private List<String> planTodoEnhancementCommands(
@@ -674,6 +837,78 @@ public class AgentChatPlanningSupport {
       log.warn("❤️ [에이전트 TODO] 강화 커맨드 계획 실패, 기본값으로 대체 message={}", e.getMessage());
       return List.of("rank_task_priority", "detect_overload");
     }
+  }
+
+  private boolean isSimpleTodoCreationRequest(String userMessage) {
+    String safeMessage = userMessage == null ? "" : userMessage.trim();
+    if (safeMessage.isBlank()) return true;
+    boolean explicitComplexityHint =
+        safeMessage.contains("재배치")
+            || safeMessage.contains("조정")
+            || safeMessage.contains("충돌")
+            || safeMessage.contains("우선순위")
+            || safeMessage.contains("분할")
+            || safeMessage.contains("재계획");
+    if (explicitComplexityHint) return false;
+    boolean simpleActionVerb =
+        safeMessage.contains("넣어")
+            || safeMessage.contains("추가")
+            || safeMessage.contains("만들어")
+            || safeMessage.contains("배치")
+            || safeMessage.contains("잡아");
+    boolean hasRelativeTimeHint =
+        safeMessage.contains("오늘")
+            || safeMessage.contains("내일")
+            || safeMessage.contains("모레")
+            || safeMessage.contains("이번주")
+            || safeMessage.contains("시쯤")
+            || safeMessage.contains("시");
+    return simpleActionVerb && hasRelativeTimeHint;
+  }
+
+  private int resolveEnhancementCommandLimit(
+      String userMessage, int calendarEventCount, int existingTodoCount, int agentTodoCount) {
+    if (isSimpleTodoCreationRequest(userMessage)) return 0;
+    String safeMessage = userMessage == null ? "" : userMessage.trim();
+    boolean explicitComplexityHint =
+        safeMessage.contains("재배치")
+            || safeMessage.contains("조정")
+            || safeMessage.contains("충돌")
+            || safeMessage.contains("우선순위")
+            || safeMessage.contains("분할")
+            || safeMessage.contains("리스크");
+    if (explicitComplexityHint) return 2;
+    boolean highContextLoad =
+        calendarEventCount >= 6 || existingTodoCount >= 14 || agentTodoCount >= 10;
+    return highContextLoad ? 2 : 1;
+  }
+
+  private List<String> sanitizePlannedCommands(List<String> plannedCommands, int maxCommands) {
+    if (plannedCommands == null || plannedCommands.isEmpty() || maxCommands <= 0) return List.of();
+    List<String> allowedOrder =
+        List.of(
+            "rank_task_priority",
+            "detect_overload",
+            "estimate_task_effort",
+            "split_task",
+            "insert_buffer_blocks",
+            "commute_aware_schedule",
+            "deadline_risk_score",
+            "explain_plan_brief");
+    Set<String> allowedSet = new HashSet<>(allowedOrder);
+    List<String> normalized = new ArrayList<>();
+    for (String command : plannedCommands) {
+      if (command == null || command.isBlank()) continue;
+      String normalizedCommand = command.trim();
+      if (!allowedSet.contains(normalizedCommand)) continue;
+      if (normalized.contains(normalizedCommand)) continue;
+      normalized.add(normalizedCommand);
+      if (normalized.size() >= maxCommands) break;
+    }
+    if (!normalized.isEmpty()) return normalized;
+    return maxCommands >= 2
+        ? List.of("rank_task_priority", "detect_overload")
+        : List.of("rank_task_priority");
   }
 
   private Map<String, Object> executeTodoEnhancementCommands(
@@ -968,8 +1203,9 @@ public class AgentChatPlanningSupport {
     if (explicitlyMorning || explicitlyEvening) return "";
     if (calendarEvents == null || calendarEvents.isEmpty()) return "";
 
-    boolean hasGeneralWorkContext =
-        safeMessage.contains("알바") || safeMessage.contains("근무") || safeMessage.contains("출근");
+    Set<String> messageTokens = tokenize(safeMessage);
+    com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem bestMatchedEvent = null;
+    int bestScore = Integer.MIN_VALUE;
     for (com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem event : calendarEvents) {
       if (event == null || event.startAt() == null || event.endAt() == null) continue;
       LocalDate eventDate = event.date();
@@ -980,31 +1216,6 @@ public class AgentChatPlanningSupport {
       String category = event.category() == null ? "" : event.category().toLowerCase();
       String title = event.title() == null ? "" : event.title().toLowerCase();
       String description = event.description() == null ? "" : event.description().toLowerCase();
-      boolean categoryMatched = !category.isBlank() && safeMessage.contains(category);
-      boolean titleMatched = !title.isBlank() && safeMessage.contains(title);
-      boolean descriptionMatched = false;
-      if (!description.isBlank()) {
-        for (String token : description.split("[\\s,./()]+")) {
-          String normalizedToken = token.trim();
-          if (normalizedToken.length() < 2) continue;
-          if (safeMessage.contains(normalizedToken)) {
-            descriptionMatched = true;
-            break;
-          }
-        }
-      }
-      boolean eventHasWorkSignal =
-          title.contains("알바")
-              || title.contains("근무")
-              || description.contains("알바")
-              || description.contains("근무")
-              || category.contains("알바")
-              || category.contains("근무");
-      if (!(categoryMatched
-          || titleMatched
-          || descriptionMatched
-          || (hasGeneralWorkContext && eventHasWorkSignal))) continue;
-
       int workStartHour = event.startAt().getHour();
       int workEndHour = event.endAt().getHour();
       int interpretedHour = mentionedHour;
@@ -1012,17 +1223,37 @@ public class AgentChatPlanningSupport {
         interpretedHour = mentionedHour + 12;
       }
       if (interpretedHour < workStartHour || interpretedHour > workEndHour) continue;
-      String contextLabel = !category.isBlank() ? category : (!title.isBlank() ? title : "관련 일정");
-      return "- 시간 해석 규칙: 사용자가 '"
-          + contextLabel
-          + "' 문맥에서 '"
-          + mentionedHour
-          + "시'라고 말하고 오전/오후를 명시하지 않으면, 해당 날짜 관련 일정 시간대를 기준으로 해석하라. "
-          + "이번 요청에서는 "
-          + interpretedHour
-          + ":00(24시간제)로 배치하라.";
+
+      Set<String> eventTokens = tokenize(category + " " + title + " " + description);
+      int overlapScore = overlapScore(messageTokens, eventTokens, 2);
+      int score = overlapScore;
+      if (!category.isBlank() && safeMessage.contains(category)) score += 4;
+      if (!title.isBlank() && safeMessage.contains(title)) score += 3;
+      if (safeMessage.contains("시간") || safeMessage.contains("때")) score += 1;
+      if (eventDate.equals(LocalDate.now(PLANNER_ZONE_ID))) score += 1;
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatchedEvent = event;
+      }
     }
-    return "";
+
+    if (bestMatchedEvent == null) return "";
+    String category =
+        bestMatchedEvent.category() == null ? "" : bestMatchedEvent.category().toLowerCase();
+    String title = bestMatchedEvent.title() == null ? "" : bestMatchedEvent.title().toLowerCase();
+    int interpretedHour = mentionedHour;
+    if (mentionedHour <= 11 && bestMatchedEvent.startAt().getHour() >= 12) {
+      interpretedHour = mentionedHour + 12;
+    }
+    String contextLabel = !category.isBlank() ? category : (!title.isBlank() ? title : "관련 일정");
+    return "- 시간 해석 규칙: 사용자가 '"
+        + contextLabel
+        + "' 문맥에서 '"
+        + mentionedHour
+        + "시'라고 말하고 오전/오후를 명시하지 않으면, 해당 날짜 관련 일정 시간대를 기준으로 해석하라. "
+        + "이번 요청에서는 "
+        + interpretedHour
+        + ":00(24시간제)로 배치하라.";
   }
 
   private List<Long> inferNegotiationTargetTodoIdsByRule(
