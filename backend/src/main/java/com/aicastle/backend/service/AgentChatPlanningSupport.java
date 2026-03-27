@@ -20,8 +20,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -336,10 +338,180 @@ public class AgentChatPlanningSupport {
       messages.add(new Message("user", userMessage));
 
       emitProgress(progressEmitter, "우선순위와 시간 충돌을 정리해서 추천안을 만들고 있어요.");
-      return openAiClient.createTodoJsonWithMessages(messages);
+      String rawTodoResponse = openAiClient.createTodoJsonWithMessages(messages);
+      return postProcessTodoNarrativeByEventContext(rawTodoResponse, userMessage, calendarEvents);
     } catch (Exception e) {
       throw new IllegalStateException("TODO 툴 루프 실행에 실패했습니다. " + e.getMessage());
     }
+  }
+
+  private String postProcessTodoNarrativeByEventContext(
+      String rawTodoResponse,
+      String userMessage,
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem> calendarEvents) {
+    if (rawTodoResponse == null || rawTodoResponse.isBlank()) return rawTodoResponse;
+    if (calendarEvents == null || calendarEvents.isEmpty()) return rawTodoResponse;
+    try {
+      JsonNode root = objectMapper.readTree(rawTodoResponse);
+      JsonNode textNode = root.path("text");
+      JsonNode todoNode = root.path("todo");
+      if (!textNode.isTextual() || !todoNode.isArray() || todoNode.isEmpty())
+        return rawTodoResponse;
+
+      JsonNode firstTodo = todoNode.get(0);
+      String todoStartAtRaw = firstTodo.path("startAt").asText("");
+      if (todoStartAtRaw.isBlank()) return rawTodoResponse;
+      LocalDateTime todoStartAt = LocalDateTime.parse(todoStartAtRaw);
+
+      com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem matchedEvent =
+          findBestMatchedEvent(userMessage, firstTodo, todoStartAt, calendarEvents);
+      if (matchedEvent == null || matchedEvent.startAt() == null || matchedEvent.endAt() == null) {
+        return rawTodoResponse;
+      }
+
+      String originalText = textNode.asText("");
+      if (originalText.isBlank()) return rawTodoResponse;
+      String normalizedLabel = buildEventLabel(matchedEvent);
+      RelationToEvent relation =
+          determineRelationToEvent(todoStartAt, matchedEvent.startAt(), matchedEvent.endAt());
+      String rewrittenText =
+          rewriteNarrativeByRelation(
+              originalText,
+              normalizedLabel,
+              relation,
+              matchedEvent.startAt(),
+              matchedEvent.endAt());
+      if (rewrittenText.equals(originalText)) return rawTodoResponse;
+
+      ((com.fasterxml.jackson.databind.node.ObjectNode) root).put("text", rewrittenText);
+      return objectMapper.writeValueAsString(root);
+    } catch (Exception ignored) {
+      return rawTodoResponse;
+    }
+  }
+
+  private com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem findBestMatchedEvent(
+      String userMessage,
+      JsonNode firstTodoNode,
+      LocalDateTime todoStartAt,
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem> calendarEvents) {
+    String normalizedMessage = normalizeText(userMessage);
+    String todoTitle = normalizeText(firstTodoNode.path("title").asText(""));
+    String todoDescription = normalizeText(firstTodoNode.path("description").asText(""));
+    Set<String> messageTokens = tokenize(normalizedMessage);
+    Set<String> todoTokens = tokenize(todoTitle + " " + todoDescription);
+
+    int bestScore = Integer.MIN_VALUE;
+    com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem bestEvent = null;
+    for (com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem event : calendarEvents) {
+      if (event == null || event.startAt() == null || event.endAt() == null) continue;
+      String eventCategory = normalizeText(event.category());
+      String eventTitle = normalizeText(event.title());
+      String eventDescription = normalizeText(event.description());
+      Set<String> eventTokens = tokenize(eventCategory + " " + eventTitle + " " + eventDescription);
+
+      int score = 0;
+      if (!eventCategory.isBlank() && normalizedMessage.contains(eventCategory)) score += 8;
+      if (!eventCategory.isBlank() && (todoTitle + " " + todoDescription).contains(eventCategory))
+        score += 5;
+      score += overlapScore(messageTokens, eventTokens, 2);
+      score += overlapScore(todoTokens, eventTokens, 2);
+      if (todoStartAt.toLocalDate().equals(event.startAt().toLocalDate())) score += 3;
+      if (!todoStartAt.isBefore(event.startAt()) && todoStartAt.isBefore(event.endAt())) score += 4;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestEvent = event;
+      }
+    }
+    return bestScore > 0 ? bestEvent : null;
+  }
+
+  private int overlapScore(Set<String> leftTokens, Set<String> rightTokens, int perToken) {
+    if (leftTokens.isEmpty() || rightTokens.isEmpty()) return 0;
+    int overlap = 0;
+    for (String token : leftTokens) {
+      if (rightTokens.contains(token)) overlap++;
+    }
+    return overlap * perToken;
+  }
+
+  private String rewriteNarrativeByRelation(
+      String text,
+      String eventLabel,
+      RelationToEvent relation,
+      LocalDateTime eventStartAt,
+      LocalDateTime eventEndAt) {
+    String rewritten = text;
+    switch (relation) {
+      case DURING -> {
+        rewritten = rewritten.replace("시작 전", "시간대에");
+        if (!eventLabel.isBlank()) {
+          rewritten = rewritten.replace(eventLabel + " 전", eventLabel + " 시간대에");
+          rewritten = rewritten.replace(eventLabel + " 시작 전", eventLabel + " 시간대에");
+        }
+        if (rewritten.equals(text)) {
+          rewritten +=
+              "\n\n※ 실제 배치는 "
+                  + eventLabel
+                  + " 시간대("
+                  + eventStartAt.toLocalTime()
+                  + "~"
+                  + eventEndAt.toLocalTime()
+                  + ") 기준으로 반영했습니다.";
+        }
+      }
+      case BEFORE -> {
+        if (!eventLabel.isBlank()) {
+          rewritten = rewritten.replace(eventLabel + " 시간대에", eventLabel + " 시작 전");
+        }
+      }
+      case AFTER -> {
+        if (!eventLabel.isBlank()) {
+          rewritten = rewritten.replace(eventLabel + " 시작 전", eventLabel + " 이후");
+          rewritten = rewritten.replace(eventLabel + " 시간대에", eventLabel + " 이후");
+        }
+      }
+    }
+    return rewritten;
+  }
+
+  private RelationToEvent determineRelationToEvent(
+      LocalDateTime todoStartAt, LocalDateTime eventStartAt, LocalDateTime eventEndAt) {
+    if (todoStartAt.isBefore(eventStartAt)) return RelationToEvent.BEFORE;
+    if (todoStartAt.isBefore(eventEndAt)) return RelationToEvent.DURING;
+    return RelationToEvent.AFTER;
+  }
+
+  private String buildEventLabel(
+      com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem event) {
+    String category = event.category() == null ? "" : event.category().trim();
+    if (!category.isBlank()) return category;
+    String title = event.title() == null ? "" : event.title().trim();
+    if (!title.isBlank()) return title;
+    return "관련 일정";
+  }
+
+  private String normalizeText(String value) {
+    if (value == null) return "";
+    return value.toLowerCase().trim();
+  }
+
+  private Set<String> tokenize(String text) {
+    Set<String> tokens = new HashSet<>();
+    if (text == null || text.isBlank()) return tokens;
+    for (String raw : text.split("[\\s,./()~\\-:]+")) {
+      String token = raw.trim();
+      if (token.length() < 2) continue;
+      tokens.add(token);
+    }
+    return tokens;
+  }
+
+  private enum RelationToEvent {
+    BEFORE,
+    DURING,
+    AFTER
   }
 
   public List<String> buildTodoProgressNotes(Long userId, Long agentId, String userMessage) {
