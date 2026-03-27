@@ -214,6 +214,9 @@ public class AgentChatService {
             user, agent, ChatMessage.Role.USER, entityMode, content, userImageUrlsJson));
 
     String systemPrompt = agentSystemPromptBuilder.build(agent, mode, PLANNER_ZONE_ID);
+    if (mode == ChatMode.CHAT) {
+      systemPrompt += agentChatPlanningSupport.buildChatLightInferenceHint(userId, content);
+    }
 
     String reply;
     List<String> progressNotes = null;
@@ -389,6 +392,7 @@ public class AgentChatService {
               user, agent, ChatMessage.Role.USER, ChatMessage.Mode.CHAT, content, null));
 
       String systemPrompt = agentSystemPromptBuilder.build(agent, ChatMode.CHAT, PLANNER_ZONE_ID);
+      systemPrompt += agentChatPlanningSupport.buildChatLightInferenceHint(userId, content);
 
       List<Message> messages = new ArrayList<>();
       messages.add(new Message("system", systemPrompt));
@@ -541,6 +545,7 @@ public class AgentChatService {
               user, agent, ChatMessage.Role.USER, ChatMessage.Mode.CHAT, content, null));
 
       String systemPrompt = agentSystemPromptBuilder.build(agent, ChatMode.CHAT, PLANNER_ZONE_ID);
+      systemPrompt += agentChatPlanningSupport.buildChatLightInferenceHint(userId, content);
 
       List<Message> messages = new ArrayList<>();
       messages.add(new Message("system", systemPrompt));

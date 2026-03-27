@@ -238,7 +238,10 @@ public class AgentChatPlanningSupport {
   }
 
   public String buildChatLightInferenceHint(Long userId, String userMessage) {
-    if (!needsLightInferenceForChat(userMessage)) return "";
+    if (!needsLightInferenceForChat(userMessage)) {
+      log.info("👉 [CHAT 경량추론] trigger=false reason=no_time_or_schedule_signal");
+      return "";
+    }
     LocalDate[] requestRange = resolveDateRange(userMessage, List.of());
     LocalDate[] lookupRange =
         resolveTodoLookupRange(userId, userMessage, requestRange[0], requestRange[1]);
@@ -246,11 +249,42 @@ public class AgentChatPlanningSupport {
     LocalDate contextEndDate = lookupRange[1];
     List<com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem> calendarEvents =
         agentPlanningToolService.getCalendarEvents(userId, contextStartDate, contextEndDate);
+    List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> todos =
+        agentPlanningToolService.getTodos(userId, contextStartDate, contextEndDate, false);
     String timeHint =
         timeInterpretationService.buildTimeInterpretationHint(
             userMessage, calendarEvents, contextStartDate, contextEndDate);
-    if (timeHint == null || timeHint.isBlank()) return "";
-    return "\n\n[경량 추론 힌트]\n" + timeHint + "\n- 문맥 일정이 조회되면 추가 질문보다 해당 일정 문맥을 우선 반영하라.\n";
+    String scheduleHint =
+        buildScheduleInquiryHint(
+            userMessage, calendarEvents, todos, contextStartDate, contextEndDate);
+    if (timeHint == null || timeHint.isBlank()) {
+      if (scheduleHint != null && !scheduleHint.isBlank()) {
+        log.info(
+            "👉 [CHAT 경량추론] trigger=true applied=true reason=schedule_inquiry_only events={} todos={} range={}~{}",
+            calendarEvents.size(),
+            todos.size(),
+            contextStartDate,
+            contextEndDate);
+        return scheduleHint;
+      }
+      log.info(
+          "👉 [CHAT 경량추론] trigger=true applied=false reason=empty_hint events={} todos={} range={}~{}",
+          calendarEvents.size(),
+          todos.size(),
+          contextStartDate,
+          contextEndDate);
+      return "";
+    }
+    log.info(
+        "👉 [CHAT 경량추론] trigger=true applied=true events={} todos={} range={}~{}",
+        calendarEvents.size(),
+        todos.size(),
+        contextStartDate,
+        contextEndDate);
+    return "\n\n[경량 추론 힌트]\n"
+        + timeHint
+        + "\n- 문맥 일정이 조회되면 추가 질문보다 해당 일정 문맥을 우선 반영하라.\n"
+        + (scheduleHint == null ? "" : scheduleHint);
   }
 
   public String runTodoToolLoop(
@@ -752,14 +786,140 @@ public class AgentChatPlanningSupport {
     if (userMessage == null || userMessage.isBlank()) return false;
     String safeMessage = userMessage.toLowerCase();
     boolean hasTimeExpression = Pattern.compile("(\\d{1,2})\\s*시").matcher(safeMessage).find();
+    boolean hasDateAnchor =
+        safeMessage.contains("오늘")
+            || safeMessage.contains("내일")
+            || safeMessage.contains("모레")
+            || safeMessage.contains("이번주")
+            || safeMessage.contains("주말")
+            || safeMessage.contains("다음주");
     boolean hasSchedulingIntent =
         safeMessage.contains("넣어")
             || safeMessage.contains("추가")
             || safeMessage.contains("배치")
             || safeMessage.contains("잡아")
             || safeMessage.contains("일정");
+    boolean hasScheduleInquiry =
+        safeMessage.contains("뭐있")
+            || safeMessage.contains("뭐 있어")
+            || safeMessage.contains("있어?")
+            || safeMessage.contains("있나")
+            || safeMessage.contains("일정");
     boolean hasContextSignal = safeMessage.contains("시간") || safeMessage.contains("때");
-    return hasTimeExpression && (hasSchedulingIntent || hasContextSignal);
+    return (hasTimeExpression && (hasSchedulingIntent || hasContextSignal))
+        || (hasDateAnchor && hasScheduleInquiry);
+  }
+
+  private String buildScheduleInquiryHint(
+      String userMessage,
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem> calendarEvents,
+      List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> todos,
+      LocalDate contextStartDate,
+      LocalDate contextEndDate) {
+    if (userMessage == null || userMessage.isBlank()) return "";
+    String safeMessage = userMessage.toLowerCase();
+    boolean isScheduleInquiry =
+        safeMessage.contains("내일")
+            || safeMessage.contains("오늘")
+            || safeMessage.contains("일정")
+            || safeMessage.contains("뭐있")
+            || safeMessage.contains("있나");
+    if (!isScheduleInquiry) return "";
+    if (calendarEvents == null) return "";
+    List<com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem> safeTodos =
+        todos == null ? List.of() : todos;
+    LocalDate inquiryTargetDate = inferInquiryTargetDate(safeMessage, contextStartDate);
+    StringBuilder sb = new StringBuilder();
+    sb.append("\n\n[조회된 일정 요약]\n");
+    sb.append("- 조회 범위: ").append(contextStartDate).append("~").append(contextEndDate).append("\n");
+    if (inquiryTargetDate != null) {
+      sb.append("- 질의 기준 날짜: ").append(inquiryTargetDate).append("\n");
+    }
+    if (calendarEvents.isEmpty() && safeTodos.isEmpty()) {
+      sb.append("- 일정 없음\n");
+      sb.append("- 사용자가 일정 추가를 원하면 어떤 종류/시간대인지 질문하라.\n");
+      return sb.toString();
+    }
+    List<InquiryScheduleLine> mergedLines = new ArrayList<>();
+    for (int i = 0; i < calendarEvents.size(); i++) {
+      com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem event =
+          calendarEvents.get(i);
+      if (event == null || event.startAt() == null || event.endAt() == null) continue;
+      LocalDate eventDate = event.date() == null ? event.startAt().toLocalDate() : event.date();
+      if (inquiryTargetDate != null && !inquiryTargetDate.equals(eventDate)) continue;
+      String line =
+          "- "
+              + eventDate
+              + " "
+              + event.startAt().toLocalTime()
+              + "~"
+              + event.endAt().toLocalTime()
+              + " ["
+              + (event.category() == null || event.category().isBlank()
+                  ? "일정"
+                  : event.category().trim())
+              + "] "
+              + (event.title() == null ? "" : event.title());
+      mergedLines.add(new InquiryScheduleLine(event.startAt(), line));
+    }
+    for (int i = 0; i < safeTodos.size(); i++) {
+      com.aicastle.backend.dto.AgentPlanningToolDtos.TodoItem todo = safeTodos.get(i);
+      if (todo == null || todo.startAt() == null || todo.endAt() == null) continue;
+      LocalDate todoDate = todo.date() == null ? todo.startAt().toLocalDate() : todo.date();
+      if (inquiryTargetDate != null && !inquiryTargetDate.equals(todoDate)) continue;
+      String line =
+          "- "
+              + todoDate
+              + " "
+              + todo.startAt().toLocalTime()
+              + "~"
+              + todo.endAt().toLocalTime()
+              + " ["
+              + (todo.category() == null || todo.category().isBlank()
+                  ? "할일"
+                  : todo.category().trim())
+              + "] "
+              + (todo.title() == null ? "" : todo.title())
+              + " (TODO)";
+      mergedLines.add(new InquiryScheduleLine(todo.startAt(), line));
+    }
+    mergedLines.sort(java.util.Comparator.comparing(InquiryScheduleLine::startAt));
+    if (mergedLines.isEmpty()) {
+      sb.append("- 해당 날짜에 등록된 일정/할일 없음\n");
+      sb.append("- 사용자가 원하면 해당 날짜 기준으로 새 일정을 제안하라.\n");
+      return sb.toString();
+    }
+    for (InquiryScheduleLine line : mergedLines) {
+      if (line == null || line.text() == null || line.text().isBlank()) continue;
+      sb.append(line.text()).append("\n");
+    }
+    sb.append("- 위 목록을 근거로 답하고, 질의 기준 날짜 항목은 누락 없이 모두 나열하라.\n");
+    return sb.toString();
+  }
+
+  private LocalDate inferInquiryTargetDate(String safeMessage, LocalDate contextStartDate) {
+    if (safeMessage == null || safeMessage.isBlank()) return null;
+    LocalDate today = LocalDate.now(PLANNER_ZONE_ID);
+    if (safeMessage.contains("오늘")) return today;
+    if (safeMessage.contains("내일")) return today.plusDays(1);
+    if (safeMessage.contains("모레")) return today.plusDays(2);
+    Matcher explicitDateMatcher = SINGLE_DATE_PATTERN.matcher(safeMessage);
+    if (explicitDateMatcher.find()) {
+      LocalDate parsedDate = tryParseDate(explicitDateMatcher.group(1), today.getYear());
+      if (parsedDate != null) return parsedDate;
+    }
+    Matcher dayOnlyMatcher = DAY_ONLY_PATTERN.matcher(safeMessage);
+    if (dayOnlyMatcher.find()) {
+      try {
+        int dayOfMonth = Integer.parseInt(dayOnlyMatcher.group(1));
+        if (dayOfMonth < 1 || dayOfMonth > 31) return null;
+        LocalDate baseDate = contextStartDate == null ? today : contextStartDate;
+        return LocalDate.of(baseDate.getYear(), baseDate.getMonthValue(), dayOfMonth);
+      } catch (Exception ignored) {
+        return null;
+      }
+    }
+    return null;
   }
 
   private void emitProgress(Consumer<String> progressEmitter, String message) {
@@ -1234,4 +1394,6 @@ public class AgentChatPlanningSupport {
       Integer shiftMinutes,
       double confidence,
       String reason) {}
+
+  private record InquiryScheduleLine(LocalDateTime startAt, String text) {}
 }
