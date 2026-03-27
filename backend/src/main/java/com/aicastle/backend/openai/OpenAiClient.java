@@ -75,9 +75,7 @@ public class OpenAiClient {
     if (properties.apiKey() == null || properties.apiKey().isBlank()) {
       throw new IllegalStateException("OPENAI_API_KEY 가 설정되어 있지 않습니다.");
     }
-    if (properties.model() == null || properties.model().isBlank()) {
-      throw new IllegalStateException("openai.model 이 설정되어 있지 않습니다.");
-    }
+    String completionModel = resolveCompletionModel();
     if (messages == null || messages.isEmpty()) {
       throw new IllegalArgumentException("messages 는 비어 있을 수 없습니다.");
     }
@@ -115,7 +113,7 @@ public class OpenAiClient {
       }
 
       ObjectNode requestNode = objectMapper.createObjectNode();
-      requestNode.put("model", properties.model().trim());
+      requestNode.put("model", completionModel);
       requestNode.put("temperature", 0.2);
       requestNode.put("stream", true);
       requestNode.set("input", objectMapper.valueToTree(responseInputMessages));
@@ -236,12 +234,10 @@ public class OpenAiClient {
     if (properties.apiKey() == null || properties.apiKey().isBlank()) {
       throw new IllegalStateException("OPENAI_API_KEY 가 설정되어 있지 않습니다.");
     }
-    if (properties.model() == null || properties.model().isBlank()) {
-      throw new IllegalStateException("openai.model 이 설정되어 있지 않습니다.");
-    }
+    String completionModel = resolveCompletionModel();
 
     ChatCompletionRequest request =
-        ChatCompletionRequest.of(properties.model().trim(), systemPrompt, userContent, 0.2);
+        ChatCompletionRequest.of(completionModel, systemPrompt, userContent, 0.2);
 
     ChatCompletionResponse response =
         restClient
@@ -267,19 +263,28 @@ public class OpenAiClient {
     throw new IllegalStateException("OpenAI 메시지 content 타입이 예상과 다릅니다.");
   }
 
+  /** 최종 CHAT/TODO 응답용 Chat Completions (openai.model). */
   public String createChatCompletionWithMessages(List<Message> messages) {
+    return createChatCompletionWithMessagesInternal(messages, resolveCompletionModel());
+  }
+
+  /** 라우팅·추론·경량 계획용 Chat Completions (openai.inference-model, 없으면 model). */
+  public String createInferenceChatCompletionWithMessages(List<Message> messages) {
+    return createChatCompletionWithMessagesInternal(messages, resolveInferenceModel());
+  }
+
+  private String createChatCompletionWithMessagesInternal(List<Message> messages, String model) {
     if (properties.apiKey() == null || properties.apiKey().isBlank()) {
       throw new IllegalStateException("OPENAI_API_KEY 가 설정되어 있지 않습니다.");
     }
-    if (properties.model() == null || properties.model().isBlank()) {
-      throw new IllegalStateException("openai.model 이 설정되어 있지 않습니다.");
+    if (model == null || model.isBlank()) {
+      throw new IllegalStateException("OpenAI model 이 설정되어 있지 않습니다.");
     }
     if (messages == null || messages.isEmpty()) {
       throw new IllegalArgumentException("messages 는 비어 있을 수 없습니다.");
     }
 
-    ChatCompletionRequest request =
-        ChatCompletionRequest.ofMessages(properties.model().trim(), messages, 0.2);
+    ChatCompletionRequest request = ChatCompletionRequest.ofMessages(model.trim(), messages, 0.2);
 
     try {
       String json = objectMapper.writeValueAsString(request);
@@ -311,21 +316,33 @@ public class OpenAiClient {
     throw new IllegalStateException("OpenAI 메시지 content 타입이 예상과 다릅니다.");
   }
 
+  private String resolveCompletionModel() {
+    if (properties.model() == null || properties.model().isBlank()) {
+      throw new IllegalStateException("openai.model 이 설정되어 있지 않습니다.");
+    }
+    return properties.model().trim();
+  }
+
+  private String resolveInferenceModel() {
+    if (properties.inferenceModel() != null && !properties.inferenceModel().isBlank()) {
+      return properties.inferenceModel().trim();
+    }
+    return resolveCompletionModel();
+  }
+
   /** TODO 모드 전용: Structured Output(JSON Schema)로 응답을 강제한다. */
   public String createTodoJsonWithMessages(List<Message> messages) {
     if (properties.apiKey() == null || properties.apiKey().isBlank()) {
       throw new IllegalStateException("OPENAI_API_KEY 가 설정되어 있지 않습니다.");
     }
-    if (properties.model() == null || properties.model().isBlank()) {
-      throw new IllegalStateException("openai.model 이 설정되어 있지 않습니다.");
-    }
+    String completionModel = resolveCompletionModel();
     if (messages == null || messages.isEmpty()) {
       throw new IllegalArgumentException("messages 는 비어 있을 수 없습니다.");
     }
 
     ChatCompletionRequest request =
         ChatCompletionRequest.ofMessagesWithResponseFormat(
-            properties.model().trim(), messages, 0.2, ResponseFormat.todoJsonSchemaV1());
+            completionModel, messages, 0.2, ResponseFormat.todoJsonSchemaV1());
 
     ChatCompletionResponse response =
         restClient
@@ -359,9 +376,7 @@ public class OpenAiClient {
     if (properties.apiKey() == null || properties.apiKey().isBlank()) {
       throw new IllegalStateException("OPENAI_API_KEY 가 설정되어 있지 않습니다.");
     }
-    if (properties.model() == null || properties.model().isBlank()) {
-      throw new IllegalStateException("openai.model 이 설정되어 있지 않습니다.");
-    }
+    String completionModel = resolveCompletionModel();
     if (messages == null || messages.isEmpty()) {
       throw new IllegalArgumentException("messages 는 비어 있을 수 없습니다.");
     }
@@ -415,8 +430,7 @@ public class OpenAiClient {
       List<ResponsesInputMessage> inputMessages =
           List.of(new ResponsesInputMessage("user", new ArrayList<>(List.of(textParts.get(0)))));
       ResponsesCreateRequest request =
-          new ResponsesCreateRequest(
-              properties.model().trim(), instructions.toString(), inputMessages, 0.2);
+          new ResponsesCreateRequest(completionModel, instructions.toString(), inputMessages, 0.2);
       try {
         String json = objectMapper.writeValueAsString(request);
         json = FIREBASE_TOKEN_PATTERN.matcher(json).replaceAll("$1****");
@@ -451,7 +465,7 @@ public class OpenAiClient {
     // data URL은 한 번만 다운로드해서 재사용
     String dataUrl = imageUrlToDataUrl(lastImageUrl);
 
-    String visionModel = properties.model().trim();
+    String visionModel = completionModel;
 
     record Attempt(String label, String imagePayload, boolean imageFirst) {}
     List<Attempt> attempts =

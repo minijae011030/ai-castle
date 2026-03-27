@@ -351,7 +351,7 @@ public class AgentChatPlanningSupport {
                       contextStartDate.toString(),
                       "contextEndDate",
                       contextEndDate.toString()))));
-      String raw = openAiClient.createChatCompletionWithMessages(messages);
+      String raw = openAiClient.createInferenceChatCompletionWithMessages(messages);
       String json = extractJsonObject(raw);
       if (json == null) return List.of("rank_task_priority", "detect_overload");
       JsonNode root = objectMapper.readTree(json);
@@ -603,7 +603,7 @@ public class AgentChatPlanningSupport {
           isSingleTodoAdjustmentRequest(userMessage == null ? "" : userMessage.toLowerCase()));
       aiInput.put("todos", todos);
       messages.add(new Message("user", objectMapper.writeValueAsString(aiInput)));
-      String raw = openAiClient.createChatCompletionWithMessages(messages);
+      String raw = openAiClient.createInferenceChatCompletionWithMessages(messages);
       String json = extractJsonObject(raw);
       if (json == null) return List.of();
       JsonNode root = objectMapper.readTree(json);
@@ -737,7 +737,7 @@ public class AgentChatPlanningSupport {
               """));
       messages.add(new Message("user", userMessage == null ? "" : userMessage));
 
-      String rawPlan = openAiClient.createChatCompletionWithMessages(messages);
+      String rawPlan = openAiClient.createInferenceChatCompletionWithMessages(messages);
       String planJson = extractJsonObject(rawPlan);
       if (planJson == null) return ChatMode.CHAT;
       JsonNode root = objectMapper.readTree(planJson);
@@ -978,7 +978,7 @@ public class AgentChatPlanningSupport {
                       "todos",
                       todos))));
 
-      String rawPlan = openAiClient.createChatCompletionWithMessages(messages);
+      String rawPlan = openAiClient.createInferenceChatCompletionWithMessages(messages);
       String planJson = extractJsonObject(rawPlan);
       if (planJson == null) return null;
       JsonNode root = objectMapper.readTree(planJson);
