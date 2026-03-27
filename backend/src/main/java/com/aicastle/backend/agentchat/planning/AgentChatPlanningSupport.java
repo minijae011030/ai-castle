@@ -148,7 +148,7 @@ public class AgentChatPlanningSupport {
           planNegotiationIntent(userMessage, todosInRange, startDate);
       requestedShiftMinutes = intentPlan.shiftMinutes();
       targetTodoIds = intentPlan.targetTodoIds();
-      log.info("❤️ [에이전트 조정] 조정 대상 추론 결과 targetTodoIds={}", targetTodoIds);
+      log.info("👉 [에이전트 조정] 조정 대상 추론 결과 targetTodoIds={}", targetTodoIds);
     }
     if (targetTodoIds.isEmpty()) {
       Map<String, Object> payload =
@@ -237,6 +237,22 @@ public class AgentChatPlanningSupport {
     return runTodoToolLoop(userId, agentId, userMessage, systemPrompt, null);
   }
 
+  public String buildChatLightInferenceHint(Long userId, String userMessage) {
+    if (!needsLightInferenceForChat(userMessage)) return "";
+    LocalDate[] requestRange = resolveDateRange(userMessage, List.of());
+    LocalDate[] lookupRange =
+        resolveTodoLookupRange(userId, userMessage, requestRange[0], requestRange[1]);
+    LocalDate contextStartDate = lookupRange[0];
+    LocalDate contextEndDate = lookupRange[1];
+    List<com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem> calendarEvents =
+        agentPlanningToolService.getCalendarEvents(userId, contextStartDate, contextEndDate);
+    String timeHint =
+        timeInterpretationService.buildTimeInterpretationHint(
+            userMessage, calendarEvents, contextStartDate, contextEndDate);
+    if (timeHint == null || timeHint.isBlank()) return "";
+    return "\n\n[경량 추론 힌트]\n" + timeHint + "\n- 문맥 일정이 조회되면 추가 질문보다 해당 일정 문맥을 우선 반영하라.\n";
+  }
+
   public String runTodoToolLoop(
       Long userId,
       Long agentId,
@@ -287,7 +303,7 @@ public class AgentChatPlanningSupport {
       List<String> normalizedPlannedCommands =
           enhancementCommandPolicy.sanitizePlannedCommands(plannedCommands, commandLimit);
       log.info(
-          "❤️ [에이전트 TODO] 강화 커맨드 최적화 skip={}, commandLimit={}, rawCommands={}, normalizedCommands={}",
+          "👉 [에이전트 TODO] 강화 커맨드 최적화 skip={}, commandLimit={}, rawCommands={}, normalizedCommands={}",
           skipEnhancementPlanning,
           commandLimit,
           plannedCommands,
@@ -488,10 +504,10 @@ public class AgentChatPlanningSupport {
         commands.add(command.trim());
       }
       if (commands.isEmpty()) return List.of("rank_task_priority", "detect_overload");
-      log.info("❤️ [에이전트 TODO] 강화 커맨드 계획 완료 commands={}", commands);
+      log.info("👉 [에이전트 TODO] 강화 커맨드 계획 완료 commands={}", commands);
       return commands;
     } catch (Exception e) {
-      log.warn("❤️ [에이전트 TODO] 강화 커맨드 계획 실패, 기본값으로 대체 message={}", e.getMessage());
+      log.warn("👉 [에이전트 TODO] 강화 커맨드 계획 실패, 기본값으로 대체 message={}", e.getMessage());
       return List.of("rank_task_priority", "detect_overload");
     }
   }
@@ -624,12 +640,12 @@ public class AgentChatPlanningSupport {
     List<Long> aiTargetIds =
         inferNegotiationTargetTodoIdsByAi(safeMessage, todos, fallbackMonthDate);
     if (!aiTargetIds.isEmpty()) {
-      log.info("❤️ [에이전트 조정] AI 타깃 선택 완료 targetTodoIds={}", aiTargetIds);
+      log.info("👉 [에이전트 조정] AI 타깃 선택 완료 targetTodoIds={}", aiTargetIds);
       return aiTargetIds;
     }
     List<Long> ruleTargetIds =
         inferNegotiationTargetTodoIdsByRule(safeMessage, todos, fallbackMonthDate);
-    log.info("❤️ [에이전트 조정] 룰 타깃 선택 완료 targetTodoIds={}", ruleTargetIds);
+    log.info("👉 [에이전트 조정] 룰 타깃 선택 완료 targetTodoIds={}", ruleTargetIds);
     return ruleTargetIds;
   }
 
@@ -708,7 +724,7 @@ public class AgentChatPlanningSupport {
       }
       return new NegotiationIntentPlan(mode, targetIds, shiftMinutes, confidence, reason);
     } catch (Exception e) {
-      log.warn("❤️ [에이전트 조정] 통합 추론 실패, 폴백 적용 message={}", e.getMessage());
+      log.warn("👉 [에이전트 조정] 통합 추론 실패, 폴백 적용 message={}", e.getMessage());
       return new NegotiationIntentPlan(
           ChatMode.TODO_NEGOTIATION, fallbackTargetIds, fallbackShiftMinutes, 0.0, "exception");
     }
@@ -730,6 +746,20 @@ public class AgentChatPlanningSupport {
     if (safeMessage.contains("1시간") || safeMessage.contains("한시간")) return 60;
     if (safeMessage.contains("30분")) return 30;
     return null;
+  }
+
+  private boolean needsLightInferenceForChat(String userMessage) {
+    if (userMessage == null || userMessage.isBlank()) return false;
+    String safeMessage = userMessage.toLowerCase();
+    boolean hasTimeExpression = Pattern.compile("(\\d{1,2})\\s*시").matcher(safeMessage).find();
+    boolean hasSchedulingIntent =
+        safeMessage.contains("넣어")
+            || safeMessage.contains("추가")
+            || safeMessage.contains("배치")
+            || safeMessage.contains("잡아")
+            || safeMessage.contains("일정");
+    boolean hasContextSignal = safeMessage.contains("시간") || safeMessage.contains("때");
+    return hasTimeExpression && (hasSchedulingIntent || hasContextSignal);
   }
 
   private void emitProgress(Consumer<String> progressEmitter, String message) {
@@ -816,7 +846,7 @@ public class AgentChatPlanningSupport {
       String reason = root.path("reason").asText("");
       JsonNode idsNode = root.path("targetTodoIds");
       if (!idsNode.isArray() || idsNode.isEmpty()) {
-        log.info("❤️ [에이전트 조정] AI 타깃 비어 있음 confidence={}, reason={}", confidence, reason);
+        log.info("👉 [에이전트 조정] AI 타깃 비어 있음 confidence={}, reason={}", confidence, reason);
         return List.of();
       }
 
@@ -834,7 +864,7 @@ public class AgentChatPlanningSupport {
       if (filteredIds.isEmpty()) return List.of();
       if (confidence < 0.55d) {
         log.info(
-            "❤️ [에이전트 조정] AI 신뢰도 낮아 폴백 예정 confidence={}, reason={}, ids={}",
+            "👉 [에이전트 조정] AI 신뢰도 낮아 폴백 예정 confidence={}, reason={}, ids={}",
             confidence,
             reason,
             filteredIds);
@@ -845,7 +875,7 @@ public class AgentChatPlanningSupport {
       }
       return filteredIds;
     } catch (Exception e) {
-      log.warn("❤️ [에이전트 조정] AI 타깃 추론 실패, 룰 폴백 적용 message={}", e.getMessage());
+      log.warn("👉 [에이전트 조정] AI 타깃 추론 실패, 룰 폴백 적용 message={}", e.getMessage());
       return List.of();
     }
   }
@@ -935,14 +965,14 @@ public class AgentChatPlanningSupport {
             default -> ChatMode.CHAT;
           };
       log.info(
-          "❤️ [에이전트 라우팅] 모드 라우팅 완료 command={}, routedMode={}, confidence={}, reason={}",
+          "👉 [에이전트 라우팅] 모드 라우팅 완료 command={}, routedMode={}, confidence={}, reason={}",
           commandName,
           routedMode,
           confidence,
           reason);
       return routedMode;
     } catch (Exception e) {
-      log.warn("❤️ [에이전트 라우팅] 라우팅 실패, CHAT 폴백 message={}", e.getMessage());
+      log.warn("👉 [에이전트 라우팅] 라우팅 실패, CHAT 폴백 message={}", e.getMessage());
       return ChatMode.CHAT;
     }
   }
@@ -1007,7 +1037,7 @@ public class AgentChatPlanningSupport {
     boolean hasExplicitDateExpression = containsExplicitDateExpression(safeMessage);
 
     log.info(
-        "❤️ [에이전트 TODO 조회범위] 시작 userId={}, hasPreDayIntent={}, hasExamIntent={}, hasExplicitDateExpression={}, requestRange={}~{}",
+        "👉 [에이전트 TODO 조회범위] 시작 userId={}, hasPreDayIntent={}, hasExamIntent={}, hasExplicitDateExpression={}, requestRange={}~{}",
         userId,
         hasPreDayIntent,
         hasExamIntent,
@@ -1023,13 +1053,13 @@ public class AgentChatPlanningSupport {
           inferredEnd = today;
         }
         log.info(
-            "❤️ [에이전트 TODO 조회범위] 시험일 추론 적용 inferredExamDate={}, selectedRange={}~{}",
+            "👉 [에이전트 TODO 조회범위] 시험일 추론 적용 inferredExamDate={}, selectedRange={}~{}",
             inferredExamDate,
             today,
             inferredEnd);
         return new LocalDate[] {today, inferredEnd};
       }
-      log.info("❤️ [에이전트 TODO 조회범위] 시험일 추론 없음, 폴백 분기 사용");
+      log.info("👉 [에이전트 TODO 조회범위] 시험일 추론 없음, 폴백 분기 사용");
     }
 
     if ((hasPreDayIntent || hasExamIntent) && requestStartDate.isAfter(today)) {
@@ -1038,13 +1068,13 @@ public class AgentChatPlanningSupport {
       if (rangeEnd.isBefore(rangeStart)) {
         rangeEnd = requestEndDate;
       }
-      log.info("❤️ [에이전트 TODO 조회범위] 의도 기반 폴백 selectedRange={}~{}", rangeStart, rangeEnd);
+      log.info("👉 [에이전트 TODO 조회범위] 의도 기반 폴백 selectedRange={}~{}", rangeStart, rangeEnd);
       return new LocalDate[] {rangeStart, rangeEnd};
     }
 
     LocalDate defaultStart = requestStartDate.minusDays(3);
     LocalDate defaultEnd = requestEndDate.plusDays(3);
-    log.info("❤️ [에이전트 TODO 조회범위] 기본 폴백 selectedRange={}~{}", defaultStart, defaultEnd);
+    log.info("👉 [에이전트 TODO 조회범위] 기본 폴백 selectedRange={}~{}", defaultStart, defaultEnd);
     return new LocalDate[] {defaultStart, defaultEnd};
   }
 
@@ -1067,7 +1097,7 @@ public class AgentChatPlanningSupport {
     long now = System.currentTimeMillis();
     CachedExamInference cached = examInferenceCache.get(key);
     if (cached != null && cached.expiresAt() > now) {
-      log.info("❤️ [에이전트 TODO 조회범위] 시험일 추론 캐시 적중 userId={}, date={}", userId, cached.examDate());
+      log.info("👉 [에이전트 TODO 조회범위] 시험일 추론 캐시 적중 userId={}, date={}", userId, cached.examDate());
       return cached.examDate();
     }
 
@@ -1141,28 +1171,28 @@ public class AgentChatPlanningSupport {
       String name = command.path("name").asText("");
       if (!"select_exam_date".equals(name)) {
         String reason = command.path("reason").asText("");
-        log.info("❤️ [에이전트 TODO 조회범위] 시험일 추론 미선택 commandName={}, reason={}", name, reason);
+        log.info("👉 [에이전트 TODO 조회범위] 시험일 추론 미선택 commandName={}, reason={}", name, reason);
         return null;
       }
       LocalDate inferredDate = parseLocalDateSafe(command.path("targetDate").asText(null));
       if (inferredDate == null) {
         String reason = command.path("reason").asText("");
         log.info(
-            "❤️ [에이전트 TODO 조회범위] 시험일 추론 날짜 형식 오류 targetDate={}, reason={}",
+            "👉 [에이전트 TODO 조회범위] 시험일 추론 날짜 형식 오류 targetDate={}, reason={}",
             command.path("targetDate").asText(""),
             reason);
         return null;
       }
 
       log.info(
-          "❤️ [에이전트 TODO 조회범위] 시험일 추론 성공 aiCommand={}, inferredDate={}, events={}, todos={}",
+          "👉 [에이전트 TODO 조회범위] 시험일 추론 성공 aiCommand={}, inferredDate={}, events={}, todos={}",
           name,
           inferredDate,
           events.size(),
           todos.size());
       return inferredDate;
     } catch (Exception e) {
-      log.warn("❤️ [에이전트 TODO 조회범위] 시험 일정 추론 실패 message={}", e.getMessage());
+      log.warn("👉 [에이전트 TODO 조회범위] 시험 일정 추론 실패 message={}", e.getMessage());
       return null;
     }
   }

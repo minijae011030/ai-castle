@@ -90,7 +90,7 @@
 - [x] 채팅 mode 필드 optional화 + 서버 AI 자동 라우팅 (`CHAT`/`TODO`/`TODO_NEGOTIATION`)
 - [x] TODO 생성 루프에 AI command planner + 실행기 연결 (`plannedCommands`)
 - [x] 에이전트 툴셋 확장 API 추가 (`task-effort`, `split-task`, `rank-priority`, `detect-overload` 등)
-- [x] 신규 툴 로그 추가 (`❤️ [TOOL:...]`) 및 TODO 루프 관측성 강화
+- [x] 신규 툴 로그 추가 (`👉 [TOOL:...]`) 및 TODO 루프 관측성 강화
 
 ## 해야 할 것
 
