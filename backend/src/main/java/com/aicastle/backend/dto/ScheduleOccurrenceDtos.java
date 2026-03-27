@@ -12,6 +12,7 @@ public class ScheduleOccurrenceDtos {
   public record ScheduleOccurrenceResponse(
       Long id,
       String title,
+      String category,
       String description,
       boolean done,
       ScheduleType type,
@@ -27,6 +28,7 @@ public class ScheduleOccurrenceDtos {
       return new ScheduleOccurrenceResponse(
           entity.getId(),
           entity.getTitle(),
+          entity.getCategory(),
           entity.getDescription(),
           entity.isDone(),
           entity.getType(),
@@ -44,6 +46,7 @@ public class ScheduleOccurrenceDtos {
   public record ScheduleCreateRequest(
       ScheduleType type,
       String title,
+      String category,
       String description,
       LocalDate occurrenceDate,
       LocalDateTime startAt,
@@ -57,6 +60,7 @@ public class ScheduleOccurrenceDtos {
   public record ScheduleRangeCreateRequest(
       ScheduleType type,
       String title,
+      String category,
       String description,
       LocalDate startDate,
       LocalDate endDate,
@@ -68,5 +72,10 @@ public class ScheduleOccurrenceDtos {
 
   /** 부분 수정 요청 DTO. */
   public record ScheduleUpdateRequest(
-      String title, String description, Boolean done, LocalDateTime startAt, LocalDateTime endAt) {}
+      String title,
+      String category,
+      String description,
+      Boolean done,
+      LocalDateTime startAt,
+      LocalDateTime endAt) {}
 }

@@ -18,6 +18,7 @@ public class AgentPlanningToolDtos {
   public record CalendarEventItem(
       Long id,
       String title,
+      String category,
       String description,
       LocalDate date,
       LocalDateTime startAt,
@@ -26,6 +27,7 @@ public class AgentPlanningToolDtos {
   public record TodoItem(
       Long id,
       String title,
+      String category,
       String description,
       boolean done,
       LocalDate date,

@@ -71,6 +71,7 @@ public class AgentPlanningToolService {
           new CalendarEventItem(
               occurrence.getId(),
               occurrence.getTitle(),
+              occurrence.getCategory(),
               occurrence.getDescription(),
               occurrence.getOccurrenceDate(),
               occurrence.getStartAt(),
@@ -733,6 +734,7 @@ public class AgentPlanningToolService {
     return new TodoItem(
         todo.getId(),
         todo.getTitle(),
+        todo.getCategory(),
         todo.getDescription(),
         todo.isDone(),
         todo.getOccurrenceDate(),
@@ -791,7 +793,13 @@ public class AgentPlanningToolService {
         LocalDateTime endAt = LocalDateTime.of(date, template.getEndTime());
         events.add(
             new CalendarEventItem(
-                null, template.getTitle(), template.getDescription(), date, startAt, endAt));
+                null,
+                template.getTitle(),
+                template.getCategory(),
+                template.getDescription(),
+                date,
+                startAt,
+                endAt));
       }
     }
     return events;

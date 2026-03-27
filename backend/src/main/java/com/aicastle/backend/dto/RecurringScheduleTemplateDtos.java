@@ -10,6 +10,7 @@ public class RecurringScheduleTemplateDtos {
   public record RecurringScheduleTemplateResponse(
       Long id,
       String title,
+      String category,
       String description,
       LocalDate periodStartDate,
       LocalDate periodEndDate,
@@ -21,6 +22,7 @@ public class RecurringScheduleTemplateDtos {
       return new RecurringScheduleTemplateResponse(
           entity.getId(),
           entity.getTitle(),
+          entity.getCategory(),
           entity.getDescription(),
           entity.getPeriodStartDate(),
           entity.getPeriodEndDate(),
@@ -32,6 +34,7 @@ public class RecurringScheduleTemplateDtos {
 
   public record RecurringScheduleTemplateCreateRequest(
       String title,
+      String category,
       String description,
       LocalDate periodStartDate,
       LocalDate periodEndDate,

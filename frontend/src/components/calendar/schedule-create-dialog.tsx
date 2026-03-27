@@ -23,7 +23,7 @@ import { useCreateSchedule, useCreateScheduleRange } from '@/hooks/queries/sched
 import { useCreateRecurringScheduleTemplate } from '@/hooks/queries/recurring-schedule-template-query'
 import type { ScheduleType } from '@/types/schedule.type'
 import { useForm, useController } from 'react-hook-form'
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 type ActiveTab = 'recurring' | 'event' | 'todo'
@@ -32,12 +32,14 @@ interface ScheduleCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedDateStr: string
+  existingCategories?: string[]
   trigger: ReactNode
 }
 
 interface ScheduleCreateFormValues {
   // 정기일정
   recurringTitle: string
+  recurringCategory: string
   recurringDescription: string
   recurringStartTime: string
   recurringEndTime: string
@@ -46,6 +48,7 @@ interface ScheduleCreateFormValues {
   recurringPeriodEndDate: string
   // 단일 일정/할일
   singleTitle: string
+  singleCategory: string
   singleDescription: string
   singleStartDate: string
   singleEndDate: string
@@ -59,6 +62,7 @@ export const ScheduleCreateDialog = ({
   open,
   onOpenChange,
   selectedDateStr,
+  existingCategories = [],
   trigger,
 }: ScheduleCreateDialogProps) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('event')
@@ -70,6 +74,7 @@ export const ScheduleCreateDialog = ({
   const { control, handleSubmit, reset } = useForm<ScheduleCreateFormValues>({
     defaultValues: {
       recurringTitle: '',
+      recurringCategory: '',
       recurringDescription: '',
       recurringStartTime: '07:00',
       recurringEndTime: '08:00',
@@ -77,6 +82,7 @@ export const ScheduleCreateDialog = ({
       recurringPeriodStartDate: '',
       recurringPeriodEndDate: '',
       singleTitle: '',
+      singleCategory: '',
       singleDescription: '',
       singleStartDate: '',
       singleEndDate: '',
@@ -93,6 +99,10 @@ export const ScheduleCreateDialog = ({
   })
   const { field: recurringDescriptionField } = useController({
     name: 'recurringDescription',
+    control,
+  })
+  const { field: recurringCategoryField } = useController({
+    name: 'recurringCategory',
     control,
   })
   const { field: recurringStartTimeField } = useController({
@@ -124,6 +134,10 @@ export const ScheduleCreateDialog = ({
     name: 'singleDescription',
     control,
   })
+  const { field: singleCategoryField } = useController({
+    name: 'singleCategory',
+    control,
+  })
   const { field: singleStartDateField } = useController({
     name: 'singleStartDate',
     control,
@@ -148,6 +162,13 @@ export const ScheduleCreateDialog = ({
     name: 'todoAgentId',
     control,
   })
+  const categoryOptions = useMemo(
+    () =>
+      [...new Set(existingCategories.map((category) => category.trim()).filter(Boolean))].sort(
+        (a, b) => a.localeCompare(b, 'ko'),
+      ),
+    [existingCategories],
+  )
 
   const closeAndReset = () => {
     onOpenChange(false)
@@ -164,6 +185,7 @@ export const ScheduleCreateDialog = ({
 
     createRecurringTemplateMutation.mutate({
       title: values.recurringTitle.trim(),
+      category: values.recurringCategory.trim() || undefined,
       description: values.recurringDescription.trim() || undefined,
       periodStartDate: period_start,
       periodEndDate: period_end,
@@ -196,6 +218,7 @@ export const ScheduleCreateDialog = ({
       createScheduleMutation.mutate({
         type,
         title: values.singleTitle.trim(),
+        category: values.singleCategory.trim() || undefined,
         description: values.singleDescription.trim() || undefined,
         occurrenceDate: start_date_str,
         startAt: start_at,
@@ -207,6 +230,7 @@ export const ScheduleCreateDialog = ({
       createScheduleRangeMutation.mutate({
         type: type as 'CALENDAR_EVENT' | 'TODO',
         title: values.singleTitle.trim(),
+        category: values.singleCategory.trim() || undefined,
         description: values.singleDescription.trim() || undefined,
         startDate: start_date_str,
         endDate: end_date_str,
@@ -245,6 +269,39 @@ export const ScheduleCreateDialog = ({
             <div className="space-y-1.5">
               <Label htmlFor="recurring-title">제목</Label>
               <Input id="recurring-title" {...recurringTitleField} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="recurring-category">카테고리</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  value={
+                    recurringCategoryField.value?.trim() ? recurringCategoryField.value : '__none__'
+                  }
+                  onValueChange={(value) =>
+                    recurringCategoryField.onChange(value === '__none__' ? '' : value)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="기존 카테고리 선택" />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="__none__">직접 입력</SelectItem>
+                    {categoryOptions.map((categoryOption) => (
+                      <SelectItem
+                        key={`recurring-category-${categoryOption}`}
+                        value={categoryOption}
+                      >
+                        {categoryOption}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  id="recurring-category"
+                  placeholder="예: 알바, 공부, 운동"
+                  {...recurringCategoryField}
+                />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="recurring-description">설명</Label>
@@ -313,6 +370,34 @@ export const ScheduleCreateDialog = ({
               <Input id="single-title-event" {...singleTitleField} />
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="single-category-event">카테고리</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  value={singleCategoryField.value?.trim() ? singleCategoryField.value : '__none__'}
+                  onValueChange={(value) =>
+                    singleCategoryField.onChange(value === '__none__' ? '' : value)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="기존 카테고리 선택" />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="__none__">직접 입력</SelectItem>
+                    {categoryOptions.map((categoryOption) => (
+                      <SelectItem key={`event-category-${categoryOption}`} value={categoryOption}>
+                        {categoryOption}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  id="single-category-event"
+                  placeholder="예: 공부, 약속, 운동"
+                  {...singleCategoryField}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="single-description-event">설명</Label>
               <Textarea id="single-description-event" {...singleDescriptionField} />
             </div>
@@ -369,6 +454,34 @@ export const ScheduleCreateDialog = ({
             <div className="space-y-1.5">
               <Label htmlFor="single-title-todo">제목</Label>
               <Input id="single-title-todo" {...singleTitleField} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="single-category-todo">카테고리</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  value={singleCategoryField.value?.trim() ? singleCategoryField.value : '__none__'}
+                  onValueChange={(value) =>
+                    singleCategoryField.onChange(value === '__none__' ? '' : value)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="기존 카테고리 선택" />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="__none__">직접 입력</SelectItem>
+                    {categoryOptions.map((categoryOption) => (
+                      <SelectItem key={`todo-category-${categoryOption}`} value={categoryOption}>
+                        {categoryOption}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  id="single-category-todo"
+                  placeholder="예: 정처기, 코테, 서류"
+                  {...singleCategoryField}
+                />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="single-description-todo">설명</Label>

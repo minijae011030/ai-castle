@@ -1,6 +1,7 @@
 export interface RecurringScheduleTemplateInterface {
   id: number
   title: string
+  category: string | null
   description: string | null
   periodStartDate: string
   periodEndDate: string
@@ -23,6 +24,7 @@ export interface RecurringScheduleTemplateSingleResponseInterface {
 
 export interface RecurringScheduleTemplateCreateBodyInterface {
   title: string
+  category?: string
   description?: string
   periodStartDate: string
   periodEndDate: string

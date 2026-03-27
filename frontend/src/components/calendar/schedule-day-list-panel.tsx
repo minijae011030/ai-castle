@@ -75,7 +75,9 @@ export const ScheduleDayListPanel = ({
                         schedule.done ? 'text-muted-foreground line-through' : 'text-foreground',
                       )}
                     >
-                      {schedule.title}
+                      {schedule.category?.trim()
+                        ? `[${schedule.category.trim()}] ${schedule.title}`
+                        : schedule.title}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       {format(new Date(schedule.startAt), 'HH:mm')} ~{' '}

@@ -164,6 +164,10 @@ public class CalendarScheduleService {
             request.occurrenceDate(),
             request.startAt(),
             normalizedEndAt);
+    if (request.category() != null) {
+      String normalizedCategory = request.category().trim();
+      occurrence.setCategory(normalizedCategory.isBlank() ? null : normalizedCategory);
+    }
 
     if (request.type() == ScheduleType.RECURRING_OCCURRENCE) {
       occurrence.setRecurringTemplateId(request.recurringTemplateId());
@@ -229,6 +233,10 @@ public class CalendarScheduleService {
               d,
               startAt,
               endAt);
+      if (request.category() != null) {
+        String normalizedCategory = request.category().trim();
+        occurrence.setCategory(normalizedCategory.isBlank() ? null : normalizedCategory);
+      }
       if (request.type() == ScheduleType.TODO && request.agentId() != null) {
         occurrence.setAgentId(request.agentId());
       }
@@ -262,6 +270,10 @@ public class CalendarScheduleService {
     }
     if (request.description() != null) {
       occurrence.setDescription(request.description().trim());
+    }
+    if (request.category() != null) {
+      String normalizedCategory = request.category().trim();
+      occurrence.setCategory(normalizedCategory.isBlank() ? null : normalizedCategory);
     }
     LocalDateTime startAt = request.startAt() != null ? request.startAt() : occurrence.getStartAt();
     LocalDateTime endAt = request.endAt() != null ? request.endAt() : occurrence.getEndAt();

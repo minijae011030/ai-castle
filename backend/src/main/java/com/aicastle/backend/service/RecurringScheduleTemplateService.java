@@ -70,6 +70,9 @@ public class RecurringScheduleTemplateService {
             user,
             req.title().trim(),
             req.description() != null ? req.description().trim() : null,
+            req.category() != null && !req.category().trim().isBlank()
+                ? req.category().trim()
+                : null,
             start,
             end,
             weekdays,

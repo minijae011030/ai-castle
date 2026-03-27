@@ -68,6 +68,7 @@ export const CalendarPage = () => {
         result.push({
           id: Number(`${t.id}${format(d, 'dd')}`),
           title: t.title,
+          category: t.category,
           description: t.description,
           done: false,
           type: 'RECURRING_OCCURRENCE',
@@ -124,6 +125,19 @@ export const CalendarPage = () => {
 
     return map
   }, [schedulesByMonth, schedulesFromTemplates])
+
+  const existingCategoryOptions = useMemo(() => {
+    const categorySet = new Set<string>()
+    for (const schedule of schedulesByMonth ?? []) {
+      const normalizedCategory = schedule.category?.trim()
+      if (normalizedCategory) categorySet.add(normalizedCategory)
+    }
+    for (const template of recurringTemplates as RecurringScheduleTemplateInterface[]) {
+      const normalizedCategory = template.category?.trim()
+      if (normalizedCategory) categorySet.add(normalizedCategory)
+    }
+    return [...categorySet].sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [recurringTemplates, schedulesByMonth])
 
   const schedulesForSelectedDay = useMemo(() => {
     const fromApi = schedulesByDay ?? []
@@ -215,6 +229,7 @@ export const CalendarPage = () => {
             open={createDialogOpen}
             onOpenChange={setCreateDialogOpen}
             selectedDateStr={selectedDateStr}
+            existingCategories={existingCategoryOptions}
             trigger={
               <Button size="sm" variant="outline">
                 + 추가
@@ -248,6 +263,9 @@ export const CalendarPage = () => {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{detailTarget.title}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  카테고리: {detailTarget.category?.trim() ? detailTarget.category : '미지정'}
+                </p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   {format(new Date(detailTarget.startAt), 'HH:mm')} ~{' '}
                   {format(new Date(detailTarget.endAt), 'HH:mm')}

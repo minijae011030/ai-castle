@@ -47,6 +47,10 @@ public class ScheduleOccurrence extends BaseTimeEntity {
   @Column(name = "group_title", length = 200)
   private String groupTitle;
 
+  /** 사용자 지정 카테고리. (예: 알바, 공부, 운동) */
+  @Column(name = "category", length = 100)
+  private String category;
+
   // 공통 표출 필드 (스냅샷)
   @Column(nullable = false, length = 200)
   private String title;

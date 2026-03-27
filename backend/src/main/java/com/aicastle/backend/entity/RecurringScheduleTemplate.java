@@ -23,6 +23,10 @@ public class RecurringScheduleTemplate extends BaseTimeEntity {
   @Column(columnDefinition = "TEXT")
   private String description;
 
+  /** 사용자 지정 카테고리. (예: 알바, 공부, 운동) */
+  @Column(name = "category", length = 100)
+  private String category;
+
   /** 반복 적용 시작일 (포함). */
   @Column(name = "period_start", nullable = false)
   private LocalDate periodStartDate;
@@ -53,6 +57,7 @@ public class RecurringScheduleTemplate extends BaseTimeEntity {
       UserAccount userAccount,
       String title,
       String description,
+      String category,
       LocalDate periodStartDate,
       LocalDate periodEndDate,
       String repeatWeekdays,
@@ -61,6 +66,7 @@ public class RecurringScheduleTemplate extends BaseTimeEntity {
     this.userAccount = userAccount;
     this.title = title;
     this.description = description;
+    this.category = category;
     this.periodStartDate = periodStartDate;
     this.periodEndDate = periodEndDate;
     this.repeatWeekdays = repeatWeekdays;

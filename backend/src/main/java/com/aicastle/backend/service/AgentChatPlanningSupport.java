@@ -773,10 +773,6 @@ public class AgentChatPlanningSupport {
       LocalDate contextEndDate) {
     if (userMessage == null || userMessage.isBlank()) return "";
     String safeMessage = userMessage.toLowerCase();
-    boolean hasWorkContext =
-        safeMessage.contains("알바") || safeMessage.contains("근무") || safeMessage.contains("출근");
-    if (!hasWorkContext) return "";
-
     Matcher hourMatcher = Pattern.compile("(\\d{1,2})\\s*시").matcher(safeMessage);
     if (!hourMatcher.find()) return "";
     int mentionedHour;
@@ -800,18 +796,43 @@ public class AgentChatPlanningSupport {
     if (explicitlyMorning || explicitlyEvening) return "";
     if (calendarEvents == null || calendarEvents.isEmpty()) return "";
 
+    boolean hasGeneralWorkContext =
+        safeMessage.contains("알바") || safeMessage.contains("근무") || safeMessage.contains("출근");
     for (com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem event : calendarEvents) {
       if (event == null || event.startAt() == null || event.endAt() == null) continue;
-      String title = event.title() == null ? "" : event.title().toLowerCase();
-      String description = event.description() == null ? "" : event.description().toLowerCase();
-      if (!(title.contains("알바")
-          || title.contains("근무")
-          || description.contains("알바")
-          || description.contains("근무"))) continue;
       LocalDate eventDate = event.date();
       if (eventDate == null) eventDate = event.startAt().toLocalDate();
       if (eventDate == null) continue;
       if (eventDate.isBefore(contextStartDate) || eventDate.isAfter(contextEndDate)) continue;
+
+      String category = event.category() == null ? "" : event.category().toLowerCase();
+      String title = event.title() == null ? "" : event.title().toLowerCase();
+      String description = event.description() == null ? "" : event.description().toLowerCase();
+      boolean categoryMatched = !category.isBlank() && safeMessage.contains(category);
+      boolean titleMatched = !title.isBlank() && safeMessage.contains(title);
+      boolean descriptionMatched = false;
+      if (!description.isBlank()) {
+        for (String token : description.split("[\\s,./()]+")) {
+          String normalizedToken = token.trim();
+          if (normalizedToken.length() < 2) continue;
+          if (safeMessage.contains(normalizedToken)) {
+            descriptionMatched = true;
+            break;
+          }
+        }
+      }
+      boolean eventHasWorkSignal =
+          title.contains("알바")
+              || title.contains("근무")
+              || description.contains("알바")
+              || description.contains("근무")
+              || category.contains("알바")
+              || category.contains("근무");
+      if (!(categoryMatched
+          || titleMatched
+          || descriptionMatched
+          || (hasGeneralWorkContext && eventHasWorkSignal))) continue;
+
       int workStartHour = event.startAt().getHour();
       int workEndHour = event.endAt().getHour();
       int interpretedHour = mentionedHour;
@@ -819,9 +840,12 @@ public class AgentChatPlanningSupport {
         interpretedHour = mentionedHour + 12;
       }
       if (interpretedHour < workStartHour || interpretedHour > workEndHour) continue;
-      return "- 시간 해석 규칙: 사용자가 알바/근무 문맥에서 '"
+      String contextLabel = !category.isBlank() ? category : (!title.isBlank() ? title : "관련 일정");
+      return "- 시간 해석 규칙: 사용자가 '"
+          + contextLabel
+          + "' 문맥에서 '"
           + mentionedHour
-          + "시'라고 말하고 오전/오후를 명시하지 않으면, 해당 날짜 근무 시간대 기준으로 해석하라. "
+          + "시'라고 말하고 오전/오후를 명시하지 않으면, 해당 날짜 관련 일정 시간대를 기준으로 해석하라. "
           + "이번 요청에서는 "
           + interpretedHour
           + ":00(24시간제)로 배치하라.";

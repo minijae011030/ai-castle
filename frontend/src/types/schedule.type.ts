@@ -3,6 +3,7 @@ export type ScheduleType = 'RECURRING_OCCURRENCE' | 'CALENDAR_EVENT' | 'TODO'
 export interface ScheduleOccurrenceInterface {
   id: number
   title: string
+  category: string | null
   description: string | null
   done: boolean
   type: ScheduleType
@@ -36,6 +37,7 @@ export interface ScheduleOccurrenceRangeResponseInterface {
 export interface ScheduleCreateBodyInterface {
   type: ScheduleType
   title: string
+  category?: string
   description?: string
   occurrenceDate: string
   startAt: string
@@ -49,6 +51,7 @@ export interface ScheduleCreateBodyInterface {
 export interface ScheduleRangeCreateBodyInterface {
   type: Exclude<ScheduleType, 'RECURRING_OCCURRENCE'>
   title: string
+  category?: string
   description?: string
   startDate: string
   endDate: string
@@ -61,6 +64,7 @@ export interface ScheduleRangeCreateBodyInterface {
 
 export interface ScheduleUpdateBodyInterface {
   title?: string
+  category?: string
   description?: string
   done?: boolean
   startAt?: string
