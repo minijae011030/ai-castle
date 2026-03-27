@@ -61,7 +61,7 @@ public class AgentPlanningToolService {
   public List<CalendarEventItem> getCalendarEvents(
       Long userId, LocalDate startDate, LocalDate endDate) {
     validateDateRange(startDate, endDate);
-    log.info("❤️ [TOOL:get_calendar_events] userId={}, range={}~{}", userId, startDate, endDate);
+    log.info("❤️ [에이전트 툴:일정조회] 사용자ID={}, 조회범위={}~{}", userId, startDate, endDate);
     List<ScheduleOccurrence> all =
         scheduleOccurrenceRepository.findByUserAndDateRange(userId, startDate, endDate);
     List<CalendarEventItem> events = new ArrayList<>();
@@ -79,10 +79,7 @@ public class AgentPlanningToolService {
     events.addAll(expandRecurringTemplateEvents(userId, startDate, endDate));
     events.sort(
         Comparator.comparing(CalendarEventItem::startAt).thenComparing(CalendarEventItem::endAt));
-    log.info(
-        "❤️ [TOOL:get_calendar_events] occurrencesFetched={}, mergedEventCount={}",
-        all.size(),
-        events.size());
+    log.info("❤️ [에이전트 툴:일정조회] 원본건수={}, 병합건수={}", all.size(), events.size());
     return events;
   }
 
@@ -91,7 +88,7 @@ public class AgentPlanningToolService {
       Long userId, LocalDate startDate, LocalDate endDate, Boolean doneOnlyOrNull) {
     validateDateRange(startDate, endDate);
     log.info(
-        "❤️ [TOOL:get_todos] userId={}, range={}~{}, doneFilter={}",
+        "❤️ [에이전트 툴:할일조회] 사용자ID={}, 조회범위={}~{}, 완료필터={}",
         userId,
         startDate,
         endDate,
@@ -104,8 +101,7 @@ public class AgentPlanningToolService {
       if (doneOnlyOrNull != null && todo.isDone() != doneOnlyOrNull) continue;
       result.add(toTodoItem(todo));
     }
-    log.info(
-        "❤️ [TOOL:get_todos] rawTodoCount={}, returnedTodoCount={}", todos.size(), result.size());
+    log.info("❤️ [에이전트 툴:할일조회] 원본건수={}, 반환건수={}", todos.size(), result.size());
     return result;
   }
 
@@ -115,7 +111,7 @@ public class AgentPlanningToolService {
     validateDateRange(startDate, endDate);
     if (agentId == null) return List.of();
     log.info(
-        "❤️ [TOOL:get_todos_by_agent] userId={}, agentId={}, range={}~{}, doneFilter={}",
+        "❤️ [에이전트 툴:에이전트할일조회] 사용자ID={}, 에이전트ID={}, 조회범위={}~{}, 완료필터={}",
         userId,
         agentId,
         startDate,
@@ -129,10 +125,7 @@ public class AgentPlanningToolService {
       if (doneOnlyOrNull != null && todo.isDone() != doneOnlyOrNull) continue;
       result.add(toTodoItem(todo));
     }
-    log.info(
-        "❤️ [TOOL:get_todos_by_agent] rawTodoCount={}, returnedTodoCount={}",
-        todos.size(),
-        result.size());
+    log.info("❤️ [에이전트 툴:에이전트할일조회] 원본건수={}, 반환건수={}", todos.size(), result.size());
     return result;
   }
 
@@ -143,7 +136,7 @@ public class AgentPlanningToolService {
             .findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
     log.info(
-        "❤️ [TOOL:get_user_constraints] userId={}, dayStart={}, dayEnd={}, intensity={}",
+        "❤️ [에이전트 툴:사용자제약조회] 사용자ID={}, 시작시간={}, 종료시간={}, 강도={}",
         userId,
         user.getDayStartTime(),
         user.getDayEndTime(),
@@ -160,7 +153,7 @@ public class AgentPlanningToolService {
   public ReschedulePlanResponse simulateReschedule(Long userId, RescheduleSimulateRequest request) {
     validateDateRange(request.startDate(), request.endDate());
     log.info(
-        "❤️ [TOOL:simulate_reschedule] userId={}, range={}~{}, todoIds={}, maxShiftDays={}, minBufferMinutes={}",
+        "❤️ [에이전트 툴:재배치시뮬레이션] 사용자ID={}, 조회범위={}~{}, 대상할일ID={}, 최대이동일수={}, 최소버퍼분={}",
         userId,
         request.startDate(),
         request.endDate(),
@@ -270,7 +263,7 @@ public class AgentPlanningToolService {
 
     boolean feasible = conflicts.isEmpty();
     log.info(
-        "❤️ [TOOL:simulate_reschedule] targetTodoCount={}, planItemCount={}, conflictCount={}, feasible={}",
+        "❤️ [에이전트 툴:재배치시뮬레이션] 대상건수={}, 계획건수={}, 충돌건수={}, 실행가능={}",
         targetTodos.size(),
         items.size(),
         conflicts.size(),
@@ -281,10 +274,10 @@ public class AgentPlanningToolService {
   @Transactional(readOnly = true)
   public ReschedulePlanResponse validatePlan(List<ReschedulePlanItem> planItems, Long userId) {
     if (planItems == null || planItems.isEmpty()) {
-      log.info("❤️ [TOOL:validate_plan] userId={}, empty plan", userId);
+      log.info("❤️ [에이전트 툴:계획검증] 사용자ID={}, 입력계획없음", userId);
       return new ReschedulePlanResponse(UUID.randomUUID().toString(), true, List.of(), List.of());
     }
-    log.info("❤️ [TOOL:validate_plan] userId={}, inputPlanItemCount={}", userId, planItems.size());
+    log.info("❤️ [에이전트 툴:계획검증] 사용자ID={}, 입력계획건수={}", userId, planItems.size());
 
     List<String> conflicts = new ArrayList<>();
     Map<LocalDate, List<TimeBlock>> proposedByDate = new HashMap<>();
@@ -334,27 +327,25 @@ public class AgentPlanningToolService {
     }
 
     boolean feasible = conflicts.isEmpty();
-    log.info(
-        "❤️ [TOOL:validate_plan] outputConflictCount={}, feasible={}", conflicts.size(), feasible);
+    log.info("❤️ [에이전트 툴:계획검증] 충돌건수={}, 실행가능={}", conflicts.size(), feasible);
     return new ReschedulePlanResponse(UUID.randomUUID().toString(), feasible, conflicts, planItems);
   }
 
   @Transactional
   public RescheduleApplyResponse applyPlan(Long userId, RescheduleApplyRequest request) {
     if (request.items() == null || request.items().isEmpty()) {
-      log.info(
-          "❤️ [TOOL:apply_reschedule] userId={}, mode={}, empty apply", userId, request.mode());
+      log.info("❤️ [에이전트 툴:재배치적용] 사용자ID={}, 적용모드={}, 입력항목없음", userId, request.mode());
       return new RescheduleApplyResponse(
           UUID.randomUUID().toString(), request.mode(), 0, List.of());
     }
     log.info(
-        "❤️ [TOOL:apply_reschedule] userId={}, mode={}, inputItemCount={}",
+        "❤️ [에이전트 툴:재배치적용] 사용자ID={}, 적용모드={}, 입력항목수={}",
         userId,
         request.mode(),
         request.items().size());
 
     if (request.mode() == ApplyMode.DRAFT) {
-      log.info("❤️ [TOOL:apply_reschedule] draft generated without DB commit");
+      log.info("❤️ [에이전트 툴:재배치적용] 초안모드로 저장, DB 반영 없음");
       return new RescheduleApplyResponse(
           UUID.randomUUID().toString(), ApplyMode.DRAFT, request.items().size(), request.items());
     }
@@ -395,7 +386,7 @@ public class AgentPlanningToolService {
     }
 
     scheduleOccurrenceRepository.saveAll(todoById.values());
-    log.info("❤️ [TOOL:apply_reschedule] commit appliedCount={}", appliedItems.size());
+    log.info("❤️ [에이전트 툴:재배치적용] 커밋 완료, 적용건수={}", appliedItems.size());
     return new RescheduleApplyResponse(
         UUID.randomUUID().toString(), ApplyMode.COMMIT, appliedItems.size(), appliedItems);
   }
@@ -403,13 +394,10 @@ public class AgentPlanningToolService {
   @Transactional
   public RescheduleRollbackResponse rollback(Long userId, RescheduleRollbackRequest request) {
     if (request.appliedItems() == null || request.appliedItems().isEmpty()) {
-      log.info("❤️ [TOOL:rollback_last_change] userId={}, empty rollback", userId);
+      log.info("❤️ [에이전트 툴:되돌리기] 사용자ID={}, 되돌릴항목없음", userId);
       return new RescheduleRollbackResponse(UUID.randomUUID().toString(), 0);
     }
-    log.info(
-        "❤️ [TOOL:rollback_last_change] userId={}, inputAppliedItemCount={}",
-        userId,
-        request.appliedItems().size());
+    log.info("❤️ [에이전트 툴:되돌리기] 사용자ID={}, 입력적용항목수={}", userId, request.appliedItems().size());
     List<Long> ids = request.appliedItems().stream().map(ReschedulePlanItem::todoId).toList();
     List<ScheduleOccurrence> todos =
         scheduleOccurrenceRepository.findByUserAccount_IdAndIdIn(userId, ids);
@@ -430,7 +418,7 @@ public class AgentPlanningToolService {
       count++;
     }
     scheduleOccurrenceRepository.saveAll(todoById.values());
-    log.info("❤️ [TOOL:rollback_last_change] rollbackCount={}", count);
+    log.info("❤️ [에이전트 툴:되돌리기] 되돌린건수={}", count);
     return new RescheduleRollbackResponse(UUID.randomUUID().toString(), count);
   }
 
@@ -457,10 +445,7 @@ public class AgentPlanningToolService {
                 ? ("충돌/제약 " + conflictCount + "건이 있어 추가 확인이 필요합니다.")
                 : "충돌 없이 적용 가능한 계획입니다.");
     log.info(
-        "❤️ [TOOL:explain_tradeoffs] movedCount={}, unchangedCount={}, conflictCount={}",
-        movedCount,
-        unchangedCount,
-        conflictCount);
+        "❤️ [에이전트 툴:설명생성] 이동건수={}, 유지건수={}, 충돌건수={}", movedCount, unchangedCount, conflictCount);
     return explanation;
   }
 
@@ -482,10 +467,7 @@ public class AgentPlanningToolService {
             + constraints.dayEndTime()
             + ", sleepDebtMinutes="
             + sleepDebtMinutes;
-    log.info(
-        "❤️ [TOOL:resolve_time_preference] userId={}, recommendedWindow={}",
-        userId,
-        recommendedWindow);
+    log.info("❤️ [에이전트 툴:시간선호해결] 사용자ID={}, 추천시간대={}", userId, recommendedWindow);
     return new TimePreferenceResponse(recommendedWindow, intensityAdjustment, reason);
   }
 
@@ -503,12 +485,12 @@ public class AgentPlanningToolService {
           };
       items.add(new EnergyCurveItem(date, peakWindow, "14:00-16:00"));
     }
-    log.info("❤️ [TOOL:get_energy_curve] userId={}, days={}", userId, items.size());
+    log.info("❤️ [에이전트 툴:에너지곡선] 사용자ID={}, 일수={}", userId, items.size());
     return new EnergyCurveResponse(items);
   }
 
   public TaskEffortEstimateResponse estimateTaskEffort(TaskEffortEstimateRequest request) {
-    log.info("❤️ [TOOL:estimate_task_effort] request={}", request);
+    log.info("❤️ [에이전트 툴:작업시간추정] 요청={}", request);
     String text = request == null || request.taskText() == null ? "" : request.taskText();
     String level =
         request == null || request.userLevel() == null
@@ -521,12 +503,12 @@ public class AgentPlanningToolService {
     int estimated = Math.max(20, base);
     TaskEffortEstimateResponse response =
         new TaskEffortEstimateResponse(estimated, "taskLength/keyword/userLevel 기반 추정");
-    log.info("❤️ [TOOL:estimate_task_effort] response={}", response);
+    log.info("❤️ [에이전트 툴:작업시간추정] 결과={}", response);
     return response;
   }
 
   public SplitTaskResponse splitTask(SplitTaskRequest request) {
-    log.info("❤️ [TOOL:split_task] request={}", request);
+    log.info("❤️ [에이전트 툴:작업분할] 요청={}", request);
     int total =
         request == null || request.totalMinutes() == null
             ? 60
@@ -546,13 +528,13 @@ public class AgentPlanningToolService {
       index++;
     }
     SplitTaskResponse response = new SplitTaskResponse(items);
-    log.info("❤️ [TOOL:split_task] splitCount={}", items.size());
+    log.info("❤️ [에이전트 툴:작업분할] 분할건수={}", items.size());
     return response;
   }
 
   public PriorityRankResponse rankTaskPriority(PriorityRankRequest request) {
     log.info(
-        "❤️ [TOOL:rank_task_priority] requestSize={}",
+        "❤️ [에이전트 툴:우선순위정렬] 입력건수={}",
         request == null || request.items() == null ? 0 : request.items().size());
     List<PriorityRankItem> items =
         request == null || request.items() == null
@@ -562,7 +544,7 @@ public class AgentPlanningToolService {
         (a, b) ->
             Integer.compare(b.score() == null ? 0 : b.score(), a.score() == null ? 0 : a.score()));
     PriorityRankResponse response = new PriorityRankResponse(items);
-    log.info("❤️ [TOOL:rank_task_priority] rankedSize={}", items.size());
+    log.info("❤️ [에이전트 툴:우선순위정렬] 정렬결과건수={}", items.size());
     return response;
   }
 
@@ -598,7 +580,7 @@ public class AgentPlanningToolService {
   }
 
   public BufferInsertResponse insertBufferBlocks(BufferInsertRequest request) {
-    log.info("❤️ [TOOL:insert_buffer_blocks] request={}", request);
+    log.info("❤️ [에이전트 툴:버퍼삽입] 요청={}", request);
     int bufferMinutes =
         request == null || request.bufferMinutes() == null
             ? 10
@@ -631,12 +613,12 @@ public class AgentPlanningToolService {
       nextStartFloor = end.plusMinutes(bufferMinutes);
     }
     BufferInsertResponse response = new BufferInsertResponse(adjusted);
-    log.info("❤️ [TOOL:insert_buffer_blocks] adjustedCount={}", adjusted.size());
+    log.info("❤️ [에이전트 툴:버퍼삽입] 조정건수={}", adjusted.size());
     return response;
   }
 
   public CommuteAwareResponse commuteAwareSchedule(CommuteAwareRequest request) {
-    log.info("❤️ [TOOL:commute_aware_schedule] request={}", request);
+    log.info("❤️ [에이전트 툴:이동시간반영] 요청={}", request);
     int commuteMinutes =
         request == null || request.commuteMinutes() == null
             ? 20
@@ -659,12 +641,12 @@ public class AgentPlanningToolService {
       prevEnd = item.proposedEndAt();
     }
     CommuteAwareResponse response = new CommuteAwareResponse(conflicts, adjusted);
-    log.info("❤️ [TOOL:commute_aware_schedule] conflictCount={}", conflicts.size());
+    log.info("❤️ [에이전트 툴:이동시간반영] 충돌건수={}", conflicts.size());
     return response;
   }
 
   public DeadlineRiskResponse getDeadlineRiskScore(DeadlineRiskRequest request) {
-    log.info("❤️ [TOOL:deadline_risk_score] request={}", request);
+    log.info("❤️ [에이전트 툴:마감리스크] 요청={}", request);
     int horizonDays =
         request == null || request.horizonDays() == null ? 14 : Math.max(1, request.horizonDays());
     int riskScore = horizonDays <= 3 ? 90 : horizonDays <= 7 ? 70 : horizonDays <= 14 ? 45 : 20;
@@ -675,13 +657,12 @@ public class AgentPlanningToolService {
             riskScore,
             riskLevel,
             "horizonDays 기반 단순 리스크 추정");
-    log.info("❤️ [TOOL:deadline_risk_score] response={}", response);
+    log.info("❤️ [에이전트 툴:마감리스크] 결과={}", response);
     return response;
   }
 
   public NegotiationOptionsResponse suggestNegotiationOptions(List<ReschedulePlanItem> items) {
-    log.info(
-        "❤️ [TOOL:suggest_negotiation_options] inputSize={}", items == null ? 0 : items.size());
+    log.info("❤️ [에이전트 툴:협상옵션추천] 입력건수={}", items == null ? 0 : items.size());
     List<ReschedulePlanItem> safeItems = items == null ? List.of() : items;
     List<NegotiationOption> options =
         List.of(
@@ -689,13 +670,13 @@ public class AgentPlanningToolService {
             new NegotiationOption("기한 연장", "중요도 낮은 항목을 1~2일 뒤로 이동", safeItems),
             new NegotiationOption("블록 분할", "긴 작업을 여러 블록으로 분할", safeItems));
     NegotiationOptionsResponse response = new NegotiationOptionsResponse(options);
-    log.info("❤️ [TOOL:suggest_negotiation_options] optionCount={}", options.size());
+    log.info("❤️ [에이전트 툴:협상옵션추천] 옵션건수={}", options.size());
     return response;
   }
 
   @Transactional
   public ApplySafeguardResponse applyWithSafeguard(Long userId, ApplySafeguardRequest request) {
-    log.info("❤️ [TOOL:apply_with_safeguard] userId={}, request={}", userId, request);
+    log.info("❤️ [에이전트 툴:안전적용] 사용자ID={}, 요청={}", userId, request);
     List<ReschedulePlanItem> items =
         request == null || request.items() == null ? List.of() : request.items();
     if (request != null && request.dryRun()) {
@@ -711,7 +692,7 @@ public class AgentPlanningToolService {
                           + item.proposedStartAt())
               .toList();
       ApplySafeguardResponse response = new ApplySafeguardResponse(true, items.size(), diff, items);
-      log.info("❤️ [TOOL:apply_with_safeguard] dryRun impactedCount={}", response.impactedCount());
+      log.info("❤️ [에이전트 툴:안전적용] 드라이런 영향건수={}", response.impactedCount());
       return response;
     }
     RescheduleApplyResponse applied =
@@ -729,12 +710,12 @@ public class AgentPlanningToolService {
             .toList();
     ApplySafeguardResponse response =
         new ApplySafeguardResponse(false, applied.appliedCount(), diff, applied.appliedItems());
-    log.info("❤️ [TOOL:apply_with_safeguard] commit impactedCount={}", response.impactedCount());
+    log.info("❤️ [에이전트 툴:안전적용] 커밋 영향건수={}", response.impactedCount());
     return response;
   }
 
   public String explainPlanBrief(ExplainBriefRequest request) {
-    log.info("❤️ [TOOL:explain_plan_brief] request={}", request);
+    log.info("❤️ [에이전트 툴:요약설명] 요청={}", request);
     String text = request == null || request.text() == null ? "" : request.text();
     String style =
         request == null || request.style() == null ? "summary" : request.style().toLowerCase();
@@ -744,7 +725,7 @@ public class AgentPlanningToolService {
           case "motivation" -> "동기부여 요약: 오늘도 충분히 해낼 수 있습니다. " + text;
           default -> "요약: " + text;
         };
-    log.info("❤️ [TOOL:explain_plan_brief] response={}", response);
+    log.info("❤️ [에이전트 툴:요약설명] 결과={}", response);
     return response;
   }
 

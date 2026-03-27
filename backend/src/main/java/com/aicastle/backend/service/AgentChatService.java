@@ -164,6 +164,11 @@ public class AgentChatService {
   }
 
   public ChatMessageResponse sendMessage(Long userId, Long agentId, ChatSendRequest request) {
+    return sendMessageInternal(userId, agentId, request, null);
+  }
+
+  private ChatMessageResponse sendMessageInternal(
+      Long userId, Long agentId, ChatSendRequest request, Consumer<String> progressEmitter) {
     AgentRole agent =
         agentRoleRepository
             .findById(agentId)
@@ -242,14 +247,27 @@ public class AgentChatService {
     List<String> progressNotes = null;
     try {
       if (mode == ChatMode.TODO_NEGOTIATION) {
-        progressNotes =
-            List.of("요청한 날짜 범위를 확인했어요.", "고정 일정과 기존 TODO 충돌을 분석했어요.", "재배치 초안을 만들고 검증했어요.");
+        progressNotes = new ArrayList<>();
+        List<String> progressNotesRef = progressNotes;
+        Consumer<String> progressSink =
+            message -> {
+              progressNotesRef.add(message);
+              if (progressEmitter != null) progressEmitter.accept(message);
+            };
         reply =
             agentChatPlanningSupport.runNegotiationToolLoop(
-                userId, content, negotiationTodos, preferredDeadlineDate);
+                userId, content, negotiationTodos, preferredDeadlineDate, progressSink);
       } else if (mode == ChatMode.TODO) {
-        progressNotes = agentChatPlanningSupport.buildTodoProgressNotes(userId, agentId, content);
-        reply = agentChatPlanningSupport.runTodoToolLoop(userId, agentId, content, systemPrompt);
+        progressNotes = new ArrayList<>();
+        List<String> progressNotesRef = progressNotes;
+        Consumer<String> progressSink =
+            message -> {
+              progressNotesRef.add(message);
+              if (progressEmitter != null) progressEmitter.accept(message);
+            };
+        reply =
+            agentChatPlanningSupport.runTodoToolLoop(
+                userId, agentId, content, systemPrompt, progressSink);
       } else {
         List<Message> messages = new ArrayList<>();
         // 시스템 프롬프트는 한 번만 넣고, 이후는 히스토리 + 현재 유저 메시지로 컨텍스트를 구성한다.
@@ -329,7 +347,7 @@ public class AgentChatService {
       throw new IllegalArgumentException("emitter 는 null 일 수 없습니다.");
     }
 
-    log.info("[CHAT_STREAM] start userId={}, agentId={}", userId, agentId);
+    log.info("❤️ [에이전트 채팅 스트림] 시작 userId={}, agentId={}", userId, agentId);
     // 프론트가 빠르게 렌더링할 수 있도록 시작 이벤트를 먼저 보낸다.
     writeNdjson(emitter, Map.of("type", "started"));
 
@@ -361,29 +379,24 @@ public class AgentChatService {
       // TODO/협상/이미지 모드는 스트리밍 복잡도가 높아 기존 방식으로 처리 (1회만 내려줌)
       boolean canStream = mode == ChatMode.CHAT && (imageUrls == null || imageUrls.isEmpty());
       log.info(
-          "[CHAT_STREAM] mode={}, canStream={}, imageCount={}",
+          "❤️ [에이전트 채팅 스트림] 모드 판정 mode={}, canStream={}, imageCount={}",
           mode,
           canStream,
           imageUrls == null ? 0 : imageUrls.size());
       if (!canStream) {
-        if (mode == ChatMode.TODO) {
-          List<String> progressNotes =
-              agentChatPlanningSupport.buildTodoProgressNotes(userId, agentId, content);
-          for (String progressNote : progressNotes) {
-            writeNdjson(emitter, Map.of("type", "delta", "text", progressNote + "\n"));
-          }
-        } else if (mode == ChatMode.TODO_NEGOTIATION) {
-          List<NegotiationTodoRequestItem> negotiationTodos = negotiationTodosForRouting;
-          LocalDate[] range = agentChatPlanningSupport.resolveDateRange(content, negotiationTodos);
-          String rangeLabel = agentChatPlanningSupport.formatRangeLabel(range[0], range[1]);
-          writeNdjson(
-              emitter, Map.of("type", "delta", "text", rangeLabel + "의 일정을 먼저 확인하고 있어요.\n"));
-          writeNdjson(emitter, Map.of("type", "delta", "text", "고정 일정과 기존 TODO의 충돌을 분석하고 있어요.\n"));
-          writeNdjson(emitter, Map.of("type", "delta", "text", "재배치 초안을 만들고 검증하고 있어요.\n"));
-        }
-        ChatMessageResponse data = sendMessage(userId, agentId, normalizedRequest);
-        log.info(
-            "[CHAT_STREAM] non-stream mode fallback sendMessage success messageId={}", data.id());
+        ChatMessageResponse data =
+            sendMessageInternal(
+                userId,
+                agentId,
+                normalizedRequest,
+                progressNote -> {
+                  try {
+                    writeNdjson(emitter, Map.of("type", "delta", "text", progressNote + "\n"));
+                  } catch (IOException ioException) {
+                    throw new RuntimeException(ioException);
+                  }
+                });
+        log.info("❤️ [에이전트 채팅 스트림] 비스트림 폴백 전송 완료 messageId={}", data.id());
         writeNdjson(emitter, Map.of("type", "final", "message", data));
         emitter.complete();
         return;
@@ -470,31 +483,29 @@ public class AgentChatService {
               writeNdjson(emitter, Map.of("type", "delta", "text", delta));
             } catch (Exception e) {
               hadStreamError.set(true);
-              log.warn("[CHAT_STREAM] delta write failed: {}", e.getMessage());
+              log.warn("❤️ [에이전트 채팅 스트림] 델타 전송 실패 message={}", e.getMessage());
             }
           },
           errorMessage -> {
             try {
               hadStreamError.set(true);
-              log.warn("[CHAT_STREAM] openai stream error: {}", errorMessage);
+              log.warn("❤️ [에이전트 채팅 스트림] OpenAI 스트림 오류 message={}", errorMessage);
               writeNdjson(emitter, Map.of("type", "error", "message", errorMessage));
             } catch (Exception ignored) {
-              log.warn("[CHAT_STREAM] error frame write failed");
+              log.warn("❤️ [에이전트 채팅 스트림] 에러 프레임 전송 실패");
             }
           });
 
       String finalText = assembled.get().toString();
       log.info(
-          "[CHAT_STREAM] assembledLength={}, hadStreamError={}",
+          "❤️ [에이전트 채팅 스트림] 응답 조립 완료 length={}, hadStreamError={}",
           finalText.length(),
           hadStreamError.get());
       if (finalText.isBlank()) {
         // OpenAI 스트림 이벤트 포맷 차이 등으로 delta가 비는 경우를 대비해 즉시 폴백한다.
         String fallbackReply = openAiClient.createChatCompletionWithMessages(messages);
         if (fallbackReply != null && !fallbackReply.isBlank()) {
-          log.info(
-              "[CHAT_STREAM] blank stream fallback completion success length={}",
-              fallbackReply.length());
+          log.info("❤️ [에이전트 채팅 스트림] 빈 스트림 폴백 성공 length={}", fallbackReply.length());
           finalText = fallbackReply;
         } else if (hadStreamError.get()) {
           throw new IllegalStateException("스트리밍 응답을 생성하지 못했습니다.");
@@ -512,13 +523,13 @@ public class AgentChatService {
       ChatMessageResponse response = toChatMessageResponse(saved, createdAt);
       writeNdjson(emitter, Map.of("type", "final", "message", response));
       log.info(
-          "[CHAT_STREAM] final sent messageId={}, contentLength={}",
+          "❤️ [에이전트 채팅 스트림] 최종 응답 전송 완료 messageId={}, contentLength={}",
           response.id(),
           response.content().length());
       emitter.complete();
     } catch (Exception e) {
       log.error(
-          "[CHAT_STREAM] failed userId={}, agentId={}, reason={}",
+          "❤️ [에이전트 채팅 스트림] 처리 실패 userId={}, agentId={}, reason={}",
           userId,
           agentId,
           e.getMessage(),
@@ -823,7 +834,7 @@ public class AgentChatService {
     try {
       return objectMapper.writeValueAsString(sanitizedImageUrls);
     } catch (Exception e) {
-      log.warn("이미지 URL JSON 직렬화에 실패했습니다. message={}", e.getMessage());
+      log.warn("❤️ [에이전트 채팅] 이미지 URL JSON 직렬화 실패 message={}", e.getMessage());
       return null;
     }
   }
@@ -849,7 +860,7 @@ public class AgentChatService {
       }
       return sanitizedImageUrls.isEmpty() ? null : sanitizedImageUrls;
     } catch (Exception e) {
-      log.warn("이미지 URL JSON 역직렬화에 실패했습니다. message={}", e.getMessage());
+      log.warn("❤️ [에이전트 채팅] 이미지 URL JSON 역직렬화 실패 message={}", e.getMessage());
       return null;
     }
   }
@@ -867,7 +878,7 @@ public class AgentChatService {
     try {
       return objectMapper.writeValueAsString(sanitizedProgressNotes);
     } catch (Exception e) {
-      log.warn("진행 상태 JSON 직렬화에 실패했습니다. message={}", e.getMessage());
+      log.warn("❤️ [에이전트 채팅] 진행 상태 JSON 직렬화 실패 message={}", e.getMessage());
       return null;
     }
   }
@@ -893,7 +904,7 @@ public class AgentChatService {
       }
       return sanitizedProgressNotes.isEmpty() ? null : sanitizedProgressNotes;
     } catch (Exception e) {
-      log.warn("진행 상태 JSON 역직렬화에 실패했습니다. message={}", e.getMessage());
+      log.warn("❤️ [에이전트 채팅] 진행 상태 JSON 역직렬화 실패 message={}", e.getMessage());
       return null;
     }
   }

@@ -149,11 +149,18 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
           normalized.startsWith('효율적인') ||
           normalized.startsWith('요청에서 날짜 범위를') ||
           normalized.includes('조회중') ||
+          normalized.includes('조회하고 있어요') ||
           normalized.includes('확인하고 있어요') ||
+          normalized.includes('추론하고 있어요') ||
           normalized.includes('점검하고 있어요') ||
           normalized.includes('정리해서') ||
           normalized.includes('추천안을 만들고 있어요') ||
           normalized.includes('초안을 만들고 있어요') ||
+          normalized.includes('저장하고') ||
+          normalized.includes('생성하고 있어요') ||
+          normalized.includes('계획하고') ||
+          normalized.includes('실행하고 있어요') ||
+          normalized.includes('축약하고 있어요') ||
           normalized.includes('분석중') ||
           normalized.includes('분석하고 있어요') ||
           normalized.includes('반영하고 있어요') ||
