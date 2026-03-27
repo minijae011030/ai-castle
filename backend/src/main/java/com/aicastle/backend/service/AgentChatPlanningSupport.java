@@ -648,10 +648,18 @@ public class AgentChatPlanningSupport {
   private String buildEventLabel(
       com.aicastle.backend.dto.AgentPlanningToolDtos.CalendarEventItem event) {
     String category = event.category() == null ? "" : event.category().trim();
-    if (!category.isBlank()) return category;
+    if (!category.isBlank() && !looksLikeMachineCategory(category)) return category;
     String title = event.title() == null ? "" : event.title().trim();
     if (!title.isBlank()) return title;
-    return "관련 일정";
+    if (!category.isBlank()) return category;
+    return "일정";
+  }
+
+  private boolean looksLikeMachineCategory(String category) {
+    String normalizedCategory = category == null ? "" : category.trim();
+    if (normalizedCategory.isBlank()) return false;
+    // 영문 대문자/언더스코어 위주 코드를 사용자 노출 라벨에서 제외한다. (예: JOB, WORK_SHIFT)
+    return normalizedCategory.matches("^[A-Z0-9_\\-]{2,}$");
   }
 
   private String normalizeText(String value) {
