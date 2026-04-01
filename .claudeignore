@@ -1,0 +1,38 @@
+# 패키지 잠금 파일 (대용량, 불필요)
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# 의존성 폴더
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# 빌드 결과물
+dist/
+build/
+frontend/dist/
+backend/build/
+.gradle/
+
+# 로그
+logs/
+*.log
+
+# 캐시
+.cache/
+.parcel-cache/
+.vite/
+
+# 환경 변수 (보안)
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

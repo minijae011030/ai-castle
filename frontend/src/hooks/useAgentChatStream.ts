@@ -12,6 +12,7 @@ interface UseAgentChatStreamParamsInterface {
 interface SendAgentChatStreamParamsInterface {
   content: string
   mode?: 'CHAT' | 'TODO'
+  imageUrls?: string[]
   onBeforeStart?: () => void
   onSuccess?: () => void
   onFailureRestore?: () => void
@@ -46,6 +47,7 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
     async ({
       content,
       mode,
+      imageUrls,
       onBeforeStart,
       onSuccess,
       onFailureRestore,
@@ -57,6 +59,7 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
 
       const now = new Date().toISOString()
       const optimisticMode = mode ?? 'CHAT'
+      const safeImageUrls = imageUrls && imageUrls.length > 0 ? imageUrls : null
       const userLocalId = `local-user-${now}-${Math.random().toString(16).slice(2)}`
       const assistantLocalId = `local-assistant-${now}-${Math.random().toString(16).slice(2)}`
       streamAssistantLocalIdRef.current = assistantLocalId
@@ -69,7 +72,7 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
           mode: optimisticMode,
           content,
           createdAt: now,
-          imageUrls: null,
+          imageUrls: safeImageUrls,
         }
         const skeletonMessage: ChatMessageInterface = {
           id: assistantLocalId,
@@ -222,7 +225,7 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
 
         await sendAgentChatMessageStream(
           agentId,
-          { content, mode, imageUrls: undefined },
+          { content, mode, imageUrls: safeImageUrls ?? undefined },
           {
             signal: abortController.signal,
             onDelta: (text) => {
@@ -259,7 +262,7 @@ export const useAgentChatStream = ({ agentId }: UseAgentChatStreamParamsInterfac
           const fallbackMessage = await sendAgentChatMessage(agentId, {
             content,
             mode,
-            imageUrls: undefined,
+            imageUrls: safeImageUrls ?? undefined,
           })
           replaceAssistantMessage((message) => ({
             ...fallbackMessage,

@@ -45,7 +45,7 @@ public class ChatMessage extends BaseTimeEntity {
   @Column(name = "content", nullable = false, columnDefinition = "TEXT")
   private String content;
 
-  @Column(name = "image_urls_json", columnDefinition = "TEXT")
+  @Column(name = "image_urls_json", columnDefinition = "LONGTEXT")
   private String imageUrlsJson;
 
   @Column(name = "progress_notes_json", columnDefinition = "TEXT")

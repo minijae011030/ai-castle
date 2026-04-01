@@ -173,19 +173,44 @@ export const AgentChatBox = ({
     })
   }
 
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result
+        if (typeof result !== 'string' || !result.startsWith('data:image/')) {
+          reject(new Error('이미지 data URL 변환 실패'))
+          return
+        }
+        resolve(result)
+      }
+      reader.onerror = () => reject(new Error('파일 읽기 실패'))
+      reader.readAsDataURL(file)
+    })
+
   const sendChat = async (payload: {
     content: string
     mode?: 'CHAT' | 'TODO'
   }): Promise<boolean> => {
     if (agentId === null) return false
     const content = payload.content.trim()
-    if (!content || sendChatMutation.isPending || sendLockRef.current || isStreamingReply)
+    const hasImages = chatImageDrafts.length > 0
+    if (
+      (!content && !hasImages) ||
+      sendChatMutation.isPending ||
+      sendLockRef.current ||
+      isStreamingReply
+    )
       return false
 
-    // 현재 /agents 스트림 전송은 텍스트만 허용한다.
-    if (chatImageDrafts.length > 0) {
-      toast.error('현재 /agents 채팅은 텍스트 실시간 전송만 지원합니다. 이미지를 제거해주세요.')
-      return false
+    let dataImageUrls: string[] = []
+    if (hasImages) {
+      try {
+        dataImageUrls = await Promise.all(chatImageDrafts.map((draft) => fileToDataUrl(draft.file)))
+      } catch {
+        toast.error('이미지 변환에 실패했습니다. 이미지를 다시 선택해 주세요.')
+        return false
+      }
     }
 
     sendLockRef.current = true
@@ -193,9 +218,11 @@ export const AgentChatBox = ({
     const ok = await sendStreamMessage({
       content,
       mode: payload.mode,
+      imageUrls: dataImageUrls,
       onBeforeStart: () => setChatInput(''),
       onSuccess: () => {
         lastSentContentRef.current = null
+        handleClearChatImage()
       },
       onFailureRestore: () => {
         setChatInput(content)
@@ -460,7 +487,7 @@ export const AgentChatBox = ({
               size="sm"
               onClick={handleSendChat}
               disabled={
-                !chatInput.trim() ||
+                (!chatInput.trim() && chatImageDrafts.length === 0) ||
                 sendChatMutation.isPending ||
                 isUploadingChatImages ||
                 isStreamingReply

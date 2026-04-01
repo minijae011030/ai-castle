@@ -29,6 +29,8 @@
 - [x] /agents 채팅 입력 모드 드롭다운 제거 (자연어 단일 입력)
 - [x] TODO 진행 문구를 버블 위 회색 상태로 고정 + 새로고침 유지
 - [x] 진행 문구를 plannedCommands 기반 동적 문구로 전환
+- [x] 서브 에이전트 -> 메인 에이전트 연결 UI
+  - 메인 에이전트 아래에 서브 에이전트가 있는 그림으로
   
 ## 해야 할 것
 
@@ -38,13 +40,19 @@
   - [ ] 제안 카드 UI: A/B/C 안 비교(감량률, 이월 항목, 리스크)
   - [ ] 액션: `이 안 적용`, `다시 제안`, `직접 수정`
 - [ ] 캘린더 화면에서 TODO 응답을 동일한 "편집 패널"로 이어서 수정/부분삭제/등록(채팅 패널과 UX 통합)
-- [ ] 서브 에이전트 -> 메인 에이전트 연결 UI
-  - 메인 에이전트 아래에 서브 에이전트가 있는 그림으로
 - [ ] 자동 배치 상태 카드(시작/종료 예정, 최근 실행 결과) 노출
 - [ ] 리포트/피드백 화면 (End Batch 요약)
 - [ ] 조정패널 제거 여부 결정 후 UX 정리
-  - [ ] 자연어 조정(패널 없이) 플로우 실험
+  - [x] 자연어 조정(패널 없이) 플로우 실험
   - [ ] 애매한 타깃(group/day/single) 확인 질문 UX
+- [ ] 메인 에이전트의 서브 에이전트 TODO 등록 UX
+  - [ ] 서브 에이전트 선택 + TODO 등록 권한 안내/경고 UI
+  - [ ] 등록 대상이 본인/서브인지 명확히 표시 (배지/라벨)
+  - [ ] 등록 후 해당 서브 채팅/캘린더에 반영 상태 피드백
+- [ ] TODO 반복 등록(정기 TODO) UX
+  - [ ] TODO 생성 다이얼로그에 반복 옵션(요일/기간/시간) 추가
+  - [ ] 반복 TODO 미리보기(생성 예정 건수/범위) 표시
+  - [ ] 반복 TODO와 일반 정기일정의 구분 표시 규칙 정리
 - [ ] 홈 대시보드 구축 (학습 분석 중심)
   - [ ] KPI 카드: 오늘 집중 시간, 총 학습 시간, 남은 가능 시간
   - [ ] 주간 히트맵 + 과목 비중 도넛 차트
@@ -94,22 +102,22 @@
 
 ## 해야 할 것
 
-- [ ] Spring Scheduler 스켈레톤 (day_start_time / day_end_time 기반 배치 트리거)
-- [ ] 시작/종료 시간 스케줄러 실행 뼈대 + 사용자 알림 발송
-- [ ] 시작 시점 자동 에이전트 실행 + 브리핑 알림
+- [x] Spring Scheduler 스켈레톤 (day_start_time / day_end_time 기반 배치 트리거)
+- [x] 시작/종료 시간 스케줄러 실행 뼈대 + 사용자 알림 발송
+- [x] 시작 시점 자동 에이전트 실행 + 브리핑 알림
 - [ ] 종료 시점 서브 -> 메인 리포트 자동 수집
-- [ ] 메인 에이전트 일일 요약(오늘 경과/내일 계획) 자동 생성 및 사용자 전달
+- [x] 메인 에이전트 일일 요약(오늘 경과/내일 계획) 자동 생성 및 사용자 전달
 - [ ] 양방향 조정 (선택 TODO 기반 NEGOTIATE 흐름)
   - propose API: 선택 Todo IDs + 사용자 사유 입력 -> 감량/재배치 안 생성
   - accept API: 선택안 적용(일정 재배치 + 상태 전이) 트랜잭션 처리
   - retry API: 추가 조건 반영 재제안
 - [ ] 자연어 조정 오케스트레이션
-  - [ ] 조정 의도 자동 감지 후 `group/day/single` 타깃 추론
-  - [ ] cross-agent TODO 후보 선택기(서버 보정) 구현
+  - [x] 조정 의도 자동 감지 후 `group/day/single` 타깃 추론
+  - [x] cross-agent TODO 후보 선택기(서버 보정) 구현
   - [ ] 조정안 A/B/C 자동 생성 -> 사용자 확인 -> 커밋 플로우
 - [ ] 조정 권한 정책 서버 가드
-  - [ ] MAIN: 전체 TODO 조정 가능, SUB: 본인 소유 TODO만 조정 가능
-  - [ ] apply 직전 소유권(agentId) 검증 및 위반 reject
+  - [x] MAIN: 전체 TODO 조정 가능, SUB: 본인 소유 TODO만 조정 가능
+  - [x] apply 직전 소유권(agentId) 검증 및 위반 reject
 - [ ] 조정 상태/이력 모델 추가
   - Todo 상태: TODO -> NEGOTIATING -> RESCHEDULED/DONE
   - 조정 이력 저장: selected_todo_ids, user_reason, proposal_json, selected_option, status
@@ -123,6 +131,14 @@
   - [ ] `POST /api/agents/draft-recommendations`
   - [ ] `POST /api/agents/drafts/confirm-create`
   - [ ] draft 상태 모델(`DRAFT/CONFIRMED/CANCELLED`)
+- [ ] 메인 에이전트 -> 서브 에이전트 TODO 등록 권한
+  - [ ] 권한 모델 확장: MAIN이 자신의 소속 SUB agentId로 TODO 생성 허용
+  - [ ] 생성 API에 targetAgentId 도입 및 소속 검증(비소속 SUB 차단)
+  - [ ] 감사 로그 추가(요청자 agentId, 대상 agentId, 생성 todo id)
+- [ ] TODO 정기 반복(Recurring TODO) 백엔드 지원
+  - [ ] 반복 TODO 스키마 설계(반복 규칙, 기간, 예외일)
+  - [ ] 반복 생성/조회/수정/중지 API 설계 및 구현
+  - [ ] 캘린더/에이전트 툴 조회 시 반복 TODO 인스턴스 확장 규칙 통합
 
 ## 조정 기능 구현 순서 (권장)
 
