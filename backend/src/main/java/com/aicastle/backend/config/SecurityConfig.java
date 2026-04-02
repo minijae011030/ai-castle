@@ -17,7 +17,12 @@ import org.springframework.web.cors.CorsConfigurationSource;
 public class SecurityConfig {
 
   private static final String[] PERMIT_ALL_PATHS = {
-    "/api/auth/signup", "/api/auth/login", "/api/health", "/error", "/api/auth/refresh",
+    "/api/auth/signup",
+    "/api/auth/login",
+    "/api/health",
+    "/error",
+    "/api/auth/refresh",
+    "/api/debug/**",
   };
 
   @Bean

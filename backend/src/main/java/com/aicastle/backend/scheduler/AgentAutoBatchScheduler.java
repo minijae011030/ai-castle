@@ -1,13 +1,11 @@
 package com.aicastle.backend.scheduler;
 
-import com.aicastle.backend.dto.ChatDtos.ChatMode;
-import com.aicastle.backend.dto.ChatDtos.ChatSendRequest;
 import com.aicastle.backend.entity.AgentRole;
 import com.aicastle.backend.entity.AgentRoleType;
 import com.aicastle.backend.entity.UserAccount;
 import com.aicastle.backend.repository.AgentRoleRepository;
 import com.aicastle.backend.repository.UserAccountRepository;
-import com.aicastle.backend.service.AgentChatService;
+import com.aicastle.backend.service.ReportService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -30,7 +28,7 @@ public class AgentAutoBatchScheduler {
 
   private final UserAccountRepository userAccountRepository;
   private final AgentRoleRepository agentRoleRepository;
-  private final AgentChatService agentChatService;
+  private final ReportService reportService;
   private final Map<String, LocalDate> triggeredDates = new ConcurrentHashMap<>();
 
   @Value("${app.scheduler.agent-batch.enabled:true}")
@@ -42,10 +40,10 @@ public class AgentAutoBatchScheduler {
   public AgentAutoBatchScheduler(
       UserAccountRepository userAccountRepository,
       AgentRoleRepository agentRoleRepository,
-      AgentChatService agentChatService) {
+      ReportService reportService) {
     this.userAccountRepository = userAccountRepository;
     this.agentRoleRepository = agentRoleRepository;
-    this.agentChatService = agentChatService;
+    this.reportService = reportService;
   }
 
   /** 1분마다 사용자별 시작/종료 시각을 확인해서 자동 채팅을 트리거한다. */
@@ -87,15 +85,10 @@ public class AgentAutoBatchScheduler {
     String dedupeKey = "START::" + user.getId() + "::" + mainAgent.getId();
     if (today.equals(triggeredDates.get(dedupeKey))) return;
     try {
-      // TODO 생성 모드로 요청해 일과 시작 시점 계획이 바로 생성되도록 한다.
-      ChatSendRequest startRequest =
-          new ChatSendRequest(
-              "일과 시작 배치입니다. 오늘 일정과 기존 TODO를 반영해서 실행 가능한 오늘 할 일을 생성해 주세요.",
-              ChatMode.TODO,
-              null,
-              null,
-              null);
-      agentChatService.sendMessage(user.getId(), mainAgent.getId(), startRequest);
+      // 오늘 날짜/일정/어제 미완료 항목을 컨텍스트로 메인 에이전트에 발송한다.
+      reportService.runMainStartBatch(user, mainAgent, today);
+      // 메인 에이전트 소속 서브 에이전트들에게도 TODO 생성 메시지를 병렬 발송한다.
+      reportService.runSubStartBatch(user, mainAgent, today);
       triggeredDates.put(dedupeKey, today);
       log.info(
           "👉 [자동배치] START 실행 완료 userId={}, mainAgentId={}, dayStartTime={}",
@@ -115,14 +108,8 @@ public class AgentAutoBatchScheduler {
     String dedupeKey = "END::" + user.getId() + "::" + mainAgent.getId();
     if (today.equals(triggeredDates.get(dedupeKey))) return;
     try {
-      ChatSendRequest endRequest =
-          new ChatSendRequest(
-              "일과 종료 배치입니다. 오늘 진행 내용을 요약하고, 내일 우선순위 TOP3를 간단히 정리해 주세요.",
-              ChatMode.CHAT,
-              null,
-              null,
-              null);
-      agentChatService.sendMessage(user.getId(), mainAgent.getId(), endRequest);
+      // 서브 에이전트 리포트 수집 → 메인 에이전트 최종 요약 생성 및 저장
+      reportService.runEndBatch(user, mainAgent, today);
       triggeredDates.put(dedupeKey, today);
       log.info(
           "👉 [자동배치] END 실행 완료 userId={}, mainAgentId={}, dayEndTime={}",

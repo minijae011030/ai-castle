@@ -170,6 +170,69 @@ public class AgentChatService {
     return sendMessageInternal(userId, agentId, request, null);
   }
 
+  /** 배치 브리핑 전용: USER 메시지 저장 없이 ASSISTANT 메시지만 저장한다. 에이전트가 먼저 말을 거는 형태로 채팅 히스토리에 남긴다. */
+  public ChatMessageResponse sendBatchBriefing(Long userId, Long agentId, String briefingPrompt) {
+    AgentRole agent =
+        agentRoleRepository
+            .findById(agentId)
+            .orElseThrow(() -> new IllegalArgumentException("에이전트를 찾을 수 없습니다."));
+    assertSubAgentLinkedToMain(agent);
+
+    UserAccount user =
+        userAccountRepository
+            .findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+    String systemPrompt = agentSystemPromptBuilder.build(agent, ChatMode.CHAT, PLANNER_ZONE_ID);
+    systemPrompt += agentChatPlanningSupport.buildChatLightInferenceHint(userId, briefingPrompt);
+
+    List<ChatMessage> recentDesc =
+        chatMessageRepository.findTop50ByUserAccount_IdAndAgentRole_IdOrderByCreatedAtDesc(
+            userId, agentId);
+
+    List<Message> messages = new ArrayList<>();
+    messages.add(new Message("system", systemPrompt));
+
+    var pinnedMemories =
+        agentPinnedMemoryRepository.findByUserAccount_IdAndAgentRole_IdOrderByCreatedAtAsc(
+            userId, agentId);
+    if (!pinnedMemories.isEmpty()) {
+      StringBuilder sb = new StringBuilder("[고정 메모리]\n");
+      for (var mem : pinnedMemories) {
+        if (mem.getContent() == null || mem.getContent().isBlank()) continue;
+        sb.append("- ").append(mem.getContent().trim()).append("\n");
+      }
+      messages.add(new Message("system", sb.toString().trim()));
+    }
+
+    List<ChatMessage> recentAsc = new ArrayList<>(recentDesc);
+    Collections.reverse(recentAsc);
+    for (ChatMessage m : recentAsc) {
+      if (m == null || m.getContent() == null || m.getContent().isBlank()) continue;
+      messages.add(
+          new Message(m.getRole() == ChatMessage.Role.USER ? "user" : "assistant", m.getContent()));
+    }
+
+    // USER 메시지는 저장하지 않고, AI 컨텍스트 구성에만 사용한다.
+    messages.add(new Message("user", briefingPrompt));
+
+    String reply;
+    try {
+      reply = openAiClient.createChatCompletionWithMessages(messages);
+    } catch (Exception e) {
+      throw new IllegalStateException("OpenAI 브리핑 호출 실패: " + e.getMessage());
+    }
+
+    // ASSISTANT 메시지만 저장 → 에이전트가 먼저 말 건 것처럼 보인다.
+    ChatMessage saved =
+        chatMessageRepository.save(
+            new ChatMessage(
+                user, agent, ChatMessage.Role.ASSISTANT, ChatMessage.Mode.CHAT, reply, null, null));
+
+    Instant createdAt = saved.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant();
+    return toChatMessageResponse(saved, createdAt);
+  }
+
   private ChatMessageResponse sendMessageInternal(
       Long userId, Long agentId, ChatSendRequest request, Consumer<String> progressEmitter) {
     AgentRole agent =

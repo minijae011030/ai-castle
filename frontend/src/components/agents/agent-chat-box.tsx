@@ -307,7 +307,7 @@ export const AgentChatBox = ({
               아직 대화가 없습니다. 아래 입력창에 질문이나 요청을 입력해 보세요.
             </p>
           ) : (
-            chatMessages.map((message) => {
+            chatMessages.map((message, index) => {
               const is_user = message.role === 'USER'
               const is_assistant = message.role === 'ASSISTANT'
               const todo_items = message.todo?.filter(Boolean) ?? []
@@ -316,104 +316,133 @@ export const AgentChatBox = ({
               )
               const progress_notes = (message.progressNotes ?? []).filter((note) => Boolean(note))
 
+              const currentDate = message.createdAt
+                ? new Date(message.createdAt).toDateString()
+                : null
+              const prevDate =
+                index > 0 && chatMessages[index - 1]?.createdAt
+                  ? new Date(chatMessages[index - 1].createdAt!).toDateString()
+                  : null
+              const showDateSeparator = currentDate && currentDate !== prevDate
+
+              const dateLabel = currentDate
+                ? new Date(message.createdAt!).toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })
+                : null
+
               return (
-                <div
-                  key={message.id}
-                  className={cn(
-                    'flex w-full items-end gap-2',
-                    is_user ? 'justify-end' : 'justify-start',
-                  )}
-                >
-                  {is_user && (
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="outline"
-                      className="shrink-0"
-                      title="메모리 저장"
-                      aria-label="메모리 저장"
-                      onClick={() =>
-                        createPinnedMemoryMutation.mutate({ content: message.content })
-                      }
-                      disabled={createPinnedMemoryMutation.isPending || !agentId}
-                    >
-                      <BookmarkPlus />
-                    </Button>
-                  )}
-                  <div className="max-w-[70%]">
-                    {is_assistant && progress_notes.length > 0 ? (
-                      <ProgressNotes notes={progress_notes} messageId={message.id} />
-                    ) : null}
-                    {is_user && message_image_urls.length > 0 ? (
-                      <div className="mb-2 grid grid-cols-2 gap-2">
-                        {message_image_urls.map((image_url) => (
-                          <a
-                            key={`${message.id}-${image_url}`}
-                            href={image_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="block"
-                          >
-                            <img
-                              src={image_url}
-                              alt="첨부 이미지"
-                              className="h-28 w-full rounded border object-cover"
-                              loading="lazy"
-                            />
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-                    <div
-                      className={cn(
-                        'rounded-lg px-3 py-2 text-xs',
-                        is_user
-                          ? 'bg-primary text-primary-foreground'
-                          : is_assistant
-                            ? 'bg-muted text-foreground'
-                            : 'bg-secondary text-secondary-foreground',
-                      )}
-                    >
-                      {is_user ? (
-                        <div className="whitespace-pre-wrap wrap-break-word">{message.content}</div>
-                      ) : (
-                        <>
-                          <MarkdownMessage content={message.content} />
-                          {todo_items.length > 0 ? (
-                            <>
-                              <TodoMessage items={todo_items} />
-                              <div className="mt-2 flex justify-end">
-                                <Button
-                                  type="button"
-                                  size="xs"
-                                  variant="outline"
-                                  onClick={() => onOpenTodoDraftPanel(message)}
-                                >
-                                  투두 편집 패널로 열기
-                                </Button>
-                              </div>
-                            </>
-                          ) : null}
-                        </>
-                      )}
+                <div key={message.id}>
+                  {showDateSeparator && dateLabel && (
+                    <div className="flex items-center gap-2 my-3">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[11px] text-muted-foreground shrink-0">
+                        {dateLabel}
+                      </span>
+                      <div className="flex-1 h-px bg-border" />
                     </div>
-                  </div>
-                  {!is_user && (
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="outline"
-                      className="shrink-0"
-                      title="메모리 저장"
-                      aria-label="메모리 저장"
-                      onClick={() =>
-                        createPinnedMemoryMutation.mutate({ content: message.content })
-                      }
-                      disabled={createPinnedMemoryMutation.isPending || !agentId}
-                    >
-                      <BookmarkPlus />
-                    </Button>
                   )}
+                  <div
+                    className={cn(
+                      'flex w-full items-end gap-2',
+                      is_user ? 'justify-end' : 'justify-start',
+                    )}
+                  >
+                    {is_user && (
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="outline"
+                        className="shrink-0"
+                        title="메모리 저장"
+                        aria-label="메모리 저장"
+                        onClick={() =>
+                          createPinnedMemoryMutation.mutate({ content: message.content })
+                        }
+                        disabled={createPinnedMemoryMutation.isPending || !agentId}
+                      >
+                        <BookmarkPlus />
+                      </Button>
+                    )}
+                    <div className="max-w-[70%]">
+                      {is_assistant && progress_notes.length > 0 ? (
+                        <ProgressNotes notes={progress_notes} messageId={message.id} />
+                      ) : null}
+                      {is_user && message_image_urls.length > 0 ? (
+                        <div className="mb-2 grid grid-cols-2 gap-2">
+                          {message_image_urls.map((image_url) => (
+                            <a
+                              key={`${message.id}-${image_url}`}
+                              href={image_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block"
+                            >
+                              <img
+                                src={image_url}
+                                alt="첨부 이미지"
+                                className="h-28 w-full rounded border object-cover"
+                                loading="lazy"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div
+                        className={cn(
+                          'rounded-lg px-3 py-2 text-xs',
+                          is_user
+                            ? 'bg-primary text-primary-foreground'
+                            : is_assistant
+                              ? 'bg-muted text-foreground'
+                              : 'bg-secondary text-secondary-foreground',
+                        )}
+                      >
+                        {is_user ? (
+                          <div className="whitespace-pre-wrap wrap-break-word">
+                            {message.content}
+                          </div>
+                        ) : (
+                          <>
+                            <MarkdownMessage content={message.content} />
+                            {todo_items.length > 0 ? (
+                              <>
+                                <TodoMessage items={todo_items} />
+                                <div className="mt-2 flex justify-end">
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="outline"
+                                    onClick={() => onOpenTodoDraftPanel(message)}
+                                  >
+                                    투두 편집 패널로 열기
+                                  </Button>
+                                </div>
+                              </>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {!is_user && (
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="outline"
+                        className="shrink-0"
+                        title="메모리 저장"
+                        aria-label="메모리 저장"
+                        onClick={() =>
+                          createPinnedMemoryMutation.mutate({ content: message.content })
+                        }
+                        disabled={createPinnedMemoryMutation.isPending || !agentId}
+                      >
+                        <BookmarkPlus />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )
             })
