@@ -1,4 +1,4 @@
-import { BookmarkPlus, ImagePlusIcon } from 'lucide-react'
+import { BookmarkPlus, ChevronDown, ChevronUp, ImagePlusIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownMessage } from '@/components/chat/markdown-message'
 import { TodoMessage } from '@/components/chat/todo-message'
@@ -11,6 +11,33 @@ import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/qu
 import { cn } from '@/lib/utils'
 import type { ChatMessageInterface, ImageDraftItemInterface } from '@/types/chat.type'
 import { toast } from 'sonner'
+
+const ProgressNotes = ({ notes, messageId }: { notes: string[]; messageId: string }) => {
+  const [open, setOpen] = useState(false)
+  const lastNote = notes[notes.length - 1]
+
+  return (
+    <div className="mb-1">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {open ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+        {open ? '단계 숨기기' : lastNote}
+      </button>
+      {open && (
+        <div className="mt-0.5 space-y-0.5 pl-4">
+          {notes.map((note) => (
+            <p key={`${messageId}-${note}`} className="text-[11px] text-muted-foreground">
+              {note}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface AgentChatBoxPropsInterface {
   agentId: number | null
@@ -315,16 +342,7 @@ export const AgentChatBox = ({
                   )}
                   <div className="max-w-[70%]">
                     {is_assistant && progress_notes.length > 0 ? (
-                      <div className="mb-1 space-y-0.5">
-                        {progress_notes.map((note) => (
-                          <p
-                            key={`${message.id}-${note}`}
-                            className="text-[11px] text-muted-foreground"
-                          >
-                            {note}
-                          </p>
-                        ))}
-                      </div>
+                      <ProgressNotes notes={progress_notes} messageId={message.id} />
                     ) : null}
                     {is_user && message_image_urls.length > 0 ? (
                       <div className="mb-2 grid grid-cols-2 gap-2">
