@@ -16,3 +16,19 @@ export function format_date_time(iso_string: string | null | undefined): string 
     return iso_string
   }
 }
+
+export function format_time(iso_string: string | null | undefined): string {
+  if (!iso_string) {
+    return ''
+  }
+
+  try {
+    const parsed = parseISO(iso_string)
+    if (Number.isNaN(parsed.getTime())) {
+      return iso_string
+    }
+    return format(parsed, 'HH:mm')
+  } catch {
+    return iso_string
+  }
+}

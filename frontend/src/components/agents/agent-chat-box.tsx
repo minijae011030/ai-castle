@@ -11,6 +11,7 @@ import { useInfiniteAgentChatHistory, useSendAgentChatMessage } from '@/hooks/qu
 import { cn } from '@/lib/utils'
 import type { ChatMessageInterface, ImageDraftItemInterface } from '@/types/chat.type'
 import { toast } from 'sonner'
+import { format_time } from '@/lib/format'
 
 const ProgressNotes = ({ notes, messageId }: { notes: string[]; messageId: string }) => {
   const [open, setOpen] = useState(false)
@@ -323,7 +324,8 @@ export const AgentChatBox = ({
                 index > 0 && chatMessages[index - 1]?.createdAt
                   ? new Date(chatMessages[index - 1].createdAt!).toDateString()
                   : null
-              const showDateSeparator = currentDate && currentDate !== prevDate
+              const showDateSeparator =
+                message.role !== 'SYSTEM' && currentDate && currentDate !== prevDate
 
               const dateLabel = currentDate
                 ? new Date(message.createdAt!).toLocaleDateString('ko-KR', {
@@ -350,22 +352,29 @@ export const AgentChatBox = ({
                       is_user ? 'justify-end' : 'justify-start',
                     )}
                   >
-                    {is_user && (
-                      <Button
-                        type="button"
-                        size="icon-xs"
-                        variant="outline"
-                        className="shrink-0"
-                        title="메모리 저장"
-                        aria-label="메모리 저장"
-                        onClick={() =>
-                          createPinnedMemoryMutation.mutate({ content: message.content })
-                        }
-                        disabled={createPinnedMemoryMutation.isPending || !agentId}
-                      >
-                        <BookmarkPlus />
-                      </Button>
-                    )}
+                    <div className="flex flex-col items-end gap-2">
+                      {is_user && (
+                        <Button
+                          type="button"
+                          size="icon-xs"
+                          variant="outline"
+                          className="shrink-0"
+                          title="메모리 저장"
+                          aria-label="메모리 저장"
+                          onClick={() =>
+                            createPinnedMemoryMutation.mutate({ content: message.content })
+                          }
+                          disabled={createPinnedMemoryMutation.isPending || !agentId}
+                        >
+                          <BookmarkPlus />
+                        </Button>
+                      )}
+                      {is_user && (
+                        <p className="text-xs text-muted-foreground">
+                          {format_time(message.createdAt)}
+                        </p>
+                      )}
+                    </div>
                     <div className="max-w-[70%]">
                       {is_assistant && progress_notes.length > 0 ? (
                         <ProgressNotes notes={progress_notes} messageId={message.id} />
@@ -390,9 +399,10 @@ export const AgentChatBox = ({
                           ))}
                         </div>
                       ) : null}
+
                       <div
                         className={cn(
-                          'rounded-lg px-3 py-2 text-xs',
+                          'rounded-lg px-3 py-2 text-sm',
                           is_user
                             ? 'bg-primary text-primary-foreground'
                             : is_assistant
@@ -407,6 +417,7 @@ export const AgentChatBox = ({
                         ) : (
                           <>
                             <MarkdownMessage content={message.content} />
+
                             {todo_items.length > 0 ? (
                               <>
                                 <TodoMessage items={todo_items} />
@@ -426,22 +437,29 @@ export const AgentChatBox = ({
                         )}
                       </div>
                     </div>
-                    {!is_user && (
-                      <Button
-                        type="button"
-                        size="icon-xs"
-                        variant="outline"
-                        className="shrink-0"
-                        title="메모리 저장"
-                        aria-label="메모리 저장"
-                        onClick={() =>
-                          createPinnedMemoryMutation.mutate({ content: message.content })
-                        }
-                        disabled={createPinnedMemoryMutation.isPending || !agentId}
-                      >
-                        <BookmarkPlus />
-                      </Button>
-                    )}
+                    <div className="flex flex-col gap-2">
+                      {!is_user && (
+                        <Button
+                          type="button"
+                          size="icon-xs"
+                          variant="outline"
+                          className="shrink-0"
+                          title="메모리 저장"
+                          aria-label="메모리 저장"
+                          onClick={() =>
+                            createPinnedMemoryMutation.mutate({ content: message.content })
+                          }
+                          disabled={createPinnedMemoryMutation.isPending || !agentId}
+                        >
+                          <BookmarkPlus />
+                        </Button>
+                      )}
+                      {!is_user && (
+                        <p className="text-xs text-muted-foreground">
+                          {format_time(message.createdAt)}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )

@@ -28,7 +28,7 @@ export const MarkdownMessage = ({ content, className }: MarkdownMessageProps) =>
     <div
       className={cn(
         // markdown은 기본적으로 개행/공백을 처리하므로 pre-wrap을 쓰면 빈 줄이 과하게 커져 보일 수 있음
-        'whitespace-normal wrap-break-word text-xs leading-[1.35rem]',
+        'whitespace-normal wrap-break-word text-sm leading-[1.35rem]',
         // basic markdown styling (tailwind-typography 없이)
         // 기본 p margin 제거(리스트 내부 p 포함)
         '[&_p]:my-0',
